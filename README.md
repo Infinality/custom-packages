@@ -109,16 +109,16 @@ Very Strong: 00,25,B6,25,00
 
 #### FREETYPE_GRAY_FILTER
 
-1 turns it on (default)
-0 turns it off
+ - 1 turns it on (default)
+ - 0 turns it off
 
 #### FREETYPE_GRAY_FILTER_PPEM
 
 For the ftsmooth.c rendering path, this controls which filter values are used at particular point sizes.  Setting it to 22 means:
 
 ```
-ppem <= 22  →  00,15,D6,15,00  (FREETYPE_GRAY_FILTER_WEIGHTS)
-ppem >  22  →  00,25,B6,25,00  (FREETYPE_GRAY_FILTER_WEIGHTS_FINAL)
+ppem <= 22  →  00,10,E0,10,00  (FREETYPE_GRAY_FILTER_WEIGHTS)
+ppem >  22  →  00,1D,C6,1D,00  (FREETYPE_GRAY_FILTER_WEIGHTS_FINAL)
 ```
 
 This has no effect in the ftoutln.c path because it doesn't know about glyph ppem.  In that case, the FREETYPE_GRAY_FILTER_WEIGHTS_FINAL is always used.
