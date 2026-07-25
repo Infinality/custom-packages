@@ -72,7 +72,7 @@ This kwin effect allows additional customization of the blur parameters.  This i
 
 https://copr.fedorainfracloud.org/coprs/infinality/fontforge/
 
-This is a build of Fontforge that has Truetype debugging enabled, but is otherwise identical to the fedora version.
+This is a build of Fontforge that has Truetype debugging enabled, but is otherwise identical to the fedora version.  Note that there is likely an upstream bug that prevents the debugger from fully working (says "no instrs" when run).  The same issue happens on the Windows version, but doesn't happen on the 2023 version, which is what makes me think it's an upstream regression.
 
 ### Chromium Browsers
 
