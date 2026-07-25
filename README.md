@@ -35,7 +35,7 @@ See the chromium folder for a script that is able to patch chromium-based browse
 
 #### Extra Weight Gibson LCD Filter
 
-The Gibson filter replaces the light LCD filter in ftlcdfil.c with one that spreads the intensities more broadly across subpixels, *and adds extra weight*, resulting in a smoother, less "color fringey" appearance.
+The Extra-Weight Gibson filter replaces the light LCD filter in ftlcdfil.c with one that spreads the intensities more broadly across subpixels, *and adds extra weight*, resulting in a smoother, heavier, and less "color fringey" appearance.  Replacing the stock "light" filter with this made sense since it's doubtful many people even use it.
 
 This:
 `{ 0x00, 0x55, 0x56, 0x55, 0x00 }`
