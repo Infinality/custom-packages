@@ -96,6 +96,16 @@ export FREETYPE_GRAY_FILTER_WEIGHTS_FINAL=00,25,B6,25,00
 
 I found that less aggressive filtering was good at smaller point sizes but not at higher ones, meaning it made sense to add a cutoff point where the filter changes to something stronger.  Serif fonts typically need stronger values than sans serif fonts, and having environment variables lets you customize launchers per-program to suit the need.
 
+Some other values to try:
+
+```
+Very Light:  00,08,F0,08,00
+Light:       00,10,E0,10,00
+Medium:      00,15,D6,15,00
+Strong:      00,1D,C6,1D,00
+Very Strong: 00,25,B6,25,00
+```
+
 
 #### FREETYPE_GRAY_FILTER
 
