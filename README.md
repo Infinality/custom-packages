@@ -17,7 +17,7 @@ Freetype with patches I like:
 
 #### Grayscale FIR Filter
 
-Of particular note is the Grayscale FIR Filter.  As far as I know, no such patch has ever been developed or available.  I developed it with the help of ChatGPT to apply essentially the same logic that the standard LCD filter does to subpixels, but to whole pixels.  The need arose because often you will encounter grayscale text that looks very different than its subpixel equivalent, with a mix of sharp and blurry stems.  The filter splits the intensities across neighboring pixels, which makes it slightly blurry but substantially more uniform and nearly indistinguishable from subpixel rendering except upon examination.  
+Of particular note is the Grayscale FIR Filter.  As far as I know, no such patch has ever been developed or available.  I developed it with the help of ChatGPT to apply essentially the same logic that the standard LCD filter does to subpixels, but to whole pixels.  The need arose because often you will encounter grayscale text that looks very different than its subpixel equivalent, with a mix of sharp and blurry stems.  The filter splits the intensities across neighboring pixels, which makes it slightly blurry but substantially more uniform and nearly indistinguishable from subpixel rendering except upon examination.
 
 Unfortunately, the place you most often encounter grayscale text is in chromium-derived browsers and electron apps, due to their aggressive reduction to grayscale during compositing.  Chromium brought most font rendering into its codebase, meaning that this patch will have no effect for those applications.  The difference can be seen in ftview however.
 
@@ -31,6 +31,8 @@ This:
 Becomes this:
 `{ 0x1c, 0x38, 0x56, 0x38, 0x1c }`
 
+See the chromium folder for a script that is able to patch chromium-based browser binaries, which do not use the system's freetype.
+
 #### Extra Weight Gibson LCD Filter
 
 The Gibson filter replaces the light LCD filter in ftlcdfil.c with one that spreads the intensities more broadly across subpixels, *and adds extra weight*, resulting in a smoother, less "color fringey" appearance.
@@ -43,13 +45,14 @@ Becomes this:
 
 This can be leveraged in fontconfig rules this way:
 
-```  
+```
   <!-- lcddefault, lcdlight, lcdnone, lcdlegacy -->
   <edit mode="assign" name="lcdfilter">
    <const>lcdlight</const>
   </edit>
 ```
 
+See the chromium folder for a script that is able to patch chromium-based browser binaries, which do not use the system's freetype.
 
 ### bgrep
 
