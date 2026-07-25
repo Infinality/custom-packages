@@ -1,0 +1,13 @@
+diff -Nur freetype-2.13.3/src/base/ftoutln.c freetype-2.13.3-testing/src/base/ftoutln.c
+--- freetype-2.13.3/src/base/ftoutln.c	2024-07-18 02:48:43.000000000 -0500
++++ freetype-2.13.3-testing/src/base/ftoutln.c	2025-05-01 13:12:55.692188361 -0500
+@@ -1030,7 +1030,8 @@
+                 i = i < last ? i + 1 : first )
+           {
+             points[i].x += xstrength + shift.x;
+-            points[i].y += ystrength + shift.y;
++            /* Disable emboldening in Y direction */
++            /* points[i].y += ystrength + shift.y; */
+           }
+         }
+         else
