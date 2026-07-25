@@ -31,7 +31,7 @@ This:
 Becomes this:
 `{ 0x1c, 0x38, 0x56, 0x38, 0x1c }`
 
-See the chromium folder for a script that is able to patch chromium-based browser binaries, which do not use the system's freetype.
+See the chromium folder for a script that is able to patch chromium-based browser binaries, which do not use the system's freetype.  (Requires:  bgrep)
 
 #### Extra Weight Gibson LCD Filter
 
@@ -52,7 +52,7 @@ This can be leveraged in fontconfig rules this way:
   </edit>
 ```
 
-See the chromium folder for a script that is able to patch chromium-based browser binaries, which do not use the system's freetype.
+See the chromium folder for a script that is able to patch chromium-based browser binaries, which do not use the system's freetype.  (Requires:  bgrep)
 
 ### bgrep
 
