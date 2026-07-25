@@ -23,7 +23,9 @@ https://copr.fedorainfracloud.org/coprs/infinality/fontforge/
 
 This is a build of Fontforge that has Truetype debugging enabled, but is otherwise identical to the fedora version.  Note that there is likely an upstream bug that prevents the debugger from fully working (says "no instrs" when run).  The same issue happens on the Windows version, but doesn't happen on the 2023 version, which is what makes me think it's an upstream regression.
 
-## Chromium Browsers
+## Chromium Based Browsers
+
+### Subpixel Filtering
 
 This is not a package for Fedora but a script that should run fine on most distros.  I have plans for several binary patches for chromium to fix some of the things they broke or made unconfigurable at runtime, but the one that exists in the chromium folder is for applying the Gibson LCD filter to subpixel rendered text across all chromium based browsers (Chrome, Chromium, Edge, Vivaldi, Opera, Brave, etc.)  The script started out as a simple bgrep command followed by a dd to perform the replacement, but I had Claude fill it in with useful options.  See the script for usage, but basically, the simplest invocation of it is to close all browsers, then run (without parameters) with sudo or as root to patch all chomium based browsers.  This will of course need to be run every time the browser(s) is updated.  The original script to do this was found online, perhaps over 10 years ago, but I can't find the original anymore to give credit to the original author for the concept.
 
