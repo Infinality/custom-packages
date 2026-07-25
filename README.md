@@ -19,7 +19,7 @@ Freetype with patches I like:
 
 Of particular note is the Grayscale FIR Filter.  As far as I know, no such patch has ever been developed or available.  I developed it with the help of ChatGPT to apply essentially the same logic that the standard LCD filter does to subpixels, but to whole pixels.  The need arose because often you will encounter grayscale text that looks very different than its subpixel equivalent, with a mix of sharp and blurry stems.  The filter splits the intensities across neighboring pixels, which makes it slightly blurry but substantially more uniform and nearly indistinguishable from subpixel rendering except upon examination.
 
-Unfortunately, the place you most often encounter grayscale text is in chromium-derived browsers and electron apps, due to their aggressive reduction to grayscale during compositing.  Chromium brought most font rendering into its codebase, meaning that this patch will have no effect for those applications.  The difference can be seen in ftview however.
+Unfortunately, the place you most often encounter grayscale text is in chromium-derived browsers and electron apps, due to their aggressive reduction to grayscale during compositing.  Chromium brought most font rendering into its codebase, meaning that this patch will have no effect for those applications.  The difference can be seen in ftview however along with desktop applications that use freetype directly, e.g. calibre, which for whatever reason renders its reader text in grayscale.
 
 #### Gibson LCD Filter
 
@@ -73,4 +73,8 @@ This kwin effect allows additional customization of the blur parameters.  This i
 https://copr.fedorainfracloud.org/coprs/infinality/fontforge/
 
 This is a build of Fontforge that has Truetype debugging enabled, but is otherwise identical to the fedora version.
+
+### Chromium Browsers
+
+This is not a package for Fedora but a script that should run fine on most distros.  I have plans for several binary patches for chromium to fix some of the things they broke or made unconfigurable at runtime, but the one that exists in the chromium folder is for applying the Gibson LCD filter to subpixel rendered text across all chromium based browsers (Chrome, Chromium, Edge, Vivaldi, Opera, Brave, etc.)  It started out a simple bgrep command followed by a dd to perform the replacement, but I had Claude fill it in with useful options.  See the script for usage, but basically, the simplest invocation of it is to close all browsers, then run (without parameters) with sudo or as root to patch all of them.  This will of course need to be run every time the package is updated.  The original script to do this was found online, perhaps over 10 years ago, but I can't find the original anymore to give credit to the original author for the concept.
 
