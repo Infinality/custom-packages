@@ -92,7 +92,7 @@ export FREETYPE_GRAY_FILTER_WEIGHTS=00,15,D6,15,00
 export FREETYPE_GRAY_FILTER_WEIGHTS_FINAL=00,25,B6,25,00
 ```
 
-I found that less aggressive filtering was good at smaller point sizes but not at higher ones, meaning it made sense to add a cutoff point where the filter changes to something stronger.
+I found that less aggressive filtering was good at smaller point sizes but not at higher ones, meaning it made sense to add a cutoff point where the filter changes to something stronger.  Serif fonts typically need stronger values than sans serif fonts, and having environment variables lets you customize launchers per-program to suit the need.
 
 
 #### FREETYPE_GRAY_FILTER
