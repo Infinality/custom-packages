@@ -1,0 +1,628 @@
+diff -ru a/src/base/ftoutln.c b/src/base/ftoutln.c
+--- a/src/base/ftoutln.c	2026-03-11 11:35:37.000000000 -0500
++++ b/src/base/ftoutln.c	2026-07-25 15:47:29.566251922 -0500
+@@ -37,6 +37,255 @@
+   const FT_Outline  null_outline = { 0, 0, NULL, NULL, NULL, 0 };
+ 
+ 
++  typedef struct  FT_OutlineGrayFilterConfig_
++  {
++    FT_Bool  enabled;
++
++    FT_Byte  weights_final[5];
++
++  } FT_OutlineGrayFilterConfig;
++
++
++  static FT_Bool
++  ft_outline_gray_is_separator( char  c )
++  {
++    return c == ' '  ||
++    c == '\t' ||
++    c == ','  ||
++    c == ':'  ||
++    c == ';';
++  }
++
++
++  /*
++   * Parse five hexadecimal byte values.
++   *
++   * Accepted examples:
++   *
++   *   00,15,D6,15,00
++   *   0x00:0x15:0xD6:0x15:0x00
++   *   00 15 D6 15 00
++   */
++  static FT_Bool
++  ft_outline_gray_parse_weights( const char*  text,
++                                 FT_Byte       weights[5] )
++  {
++    const char*  p;
++    char*        end;
++    FT_Long      value;
++    FT_UInt      i;
++
++
++    if ( !text || !*text )
++      return 0;
++
++    p = text;
++
++    for ( i = 0; i < 5; i++ )
++    {
++      while ( *p && ft_outline_gray_is_separator( *p ) )
++        p++;
++
++      if ( !*p )
++        return 0;
++
++      value = ft_strtol( p, &end, 16 );
++
++      if ( end == p || value < 0 || value > 0xFF )
++        return 0;
++
++      weights[i] = (FT_Byte)value;
++      p          = end;
++    }
++
++    while ( *p && ft_outline_gray_is_separator( *p ) )
++      p++;
++
++    /*
++     * Reject trailing text or a sixth value.
++     */
++    return *p == '\0';
++  }
++
++
++
++  static void
++  ft_outline_gray_get_config( FT_OutlineGrayFilterConfig*  config )
++  {
++    static const FT_Byte  weights_final_default[5] =
++    {
++      0x00, 0x1D, 0xC6, 0x1D, 0x00
++    };
++
++    const char*  value;
++    FT_Byte      parsed[5];
++
++
++    config->enabled = 1;
++
++    ft_memcpy( config->weights_final,
++               weights_final_default,
++               sizeof ( config->weights_final ) );
++
++    /*
++     * FREETYPE_GRAY_FILTER=0 disables both custom grayscale paths.
++     */
++    value = ft_getenv( "FREETYPE_GRAY_FILTER" );
++
++    if ( value && value[0] == '0' && value[1] == '\0' )
++      config->enabled = 0;
++
++    /*
++     * FT_Outline_Get_Bitmap has no face or size information.
++     * Always use the final-strength weight set for this path.
++     */
++    value = ft_getenv( "FREETYPE_GRAY_FILTER_WEIGHTS_FINAL" );
++
++    if ( ft_outline_gray_parse_weights( value, parsed ) )
++    {
++      ft_memcpy( config->weights_final,
++                 parsed,
++                 sizeof ( config->weights_final ) );
++    }
++  }
++
++  /*
++   * Apply the five-tap grayscale filter to a caller-owned bitmap
++   * without changing its dimensions, pitch, or buffer.
++   *
++   * Because FT_Outline_Get_Bitmap() cannot expand the target bitmap,
++   * filter contributions outside the existing width are clipped.
++   */
++  static FT_Error
++  ft_outline_filter_gray_bitmap( FT_Library        library,
++                                 const FT_Bitmap*  bitmap )
++  {
++    FT_OutlineGrayFilterConfig  config;
++
++    FT_Memory       memory;
++    FT_Error        error = FT_Err_Ok;
++    const FT_Byte*  weights;
++
++    FT_Byte*  source = NULL;
++    FT_Byte*  target;
++
++    FT_Long   pitch;
++    FT_ULong  stride;
++
++    FT_UInt  width;
++    FT_UInt  rows;
++    FT_UInt  y;
++    FT_UInt  x;
++    FT_UInt  tap;
++
++
++    if ( !library )
++      return FT_THROW( Invalid_Library_Handle );
++
++    if ( !bitmap )
++      return FT_THROW( Invalid_Argument );
++
++    ft_outline_gray_get_config( &config );
++
++    if ( !config.enabled )
++      return FT_Err_Ok;
++
++    if ( bitmap->pixel_mode != FT_PIXEL_MODE_GRAY ||
++      !bitmap->buffer                          ||
++      !bitmap->width                           ||
++      !bitmap->rows )
++      return FT_Err_Ok;
++
++    width = bitmap->width;
++    rows  = bitmap->rows;
++    pitch = bitmap->pitch;
++
++    /*
++     * FT_Bitmap::pitch can be positive or negative.  Horizontal
++     * filtering does not care about vertical orientation, so iterate
++     * over rows in their physical memory order.
++     */
++    if ( pitch < 0 )
++      stride = (FT_ULong)( -(FT_Long)pitch );
++    else
++      stride = (FT_ULong)pitch;
++
++    /*
++     * For FT_PIXEL_MODE_GRAY, each pixel occupies one byte.
++     */
++    if ( stride < width )
++      return FT_THROW( Invalid_Argument );
++
++    /*
++     * This path has no reliable ppem information.  Use one weight
++     * array for every outline so glyphs at a given size cannot switch
++     * filter strength according to their individual bitmap height.
++     */
++    weights = config.weights_final;
++
++    memory = library->memory;
++
++    /*
++     * Only one temporary row is necessary because the convolution is
++     * horizontal.  Copy each source row before overwriting it.
++     */
++    if ( FT_ALLOC( source, width ) )
++      return error;
++
++    for ( y = 0; y < rows; y++ )
++    {
++      target = bitmap->buffer + (FT_ULong)y * stride;
++
++      ft_memcpy( source, target, width );
++
++      for ( x = 0; x < width; x++ )
++      {
++        FT_UInt  sum;
++        FT_UInt  result;
++
++
++        sum = 0;
++
++        /*
++         * The expanding ftsmooth.c version calculates:
++         *
++         *   expanded[x] = sum( source[x - tap] * weights[tap] )
++         *
++         * and places the original bitmap at expanded offset +2.
++         *
++         * Therefore, the equivalent same-coordinate in-place lookup is:
++         *
++         *   source[x + 2 - tap]
++         */
++        for ( tap = 0; tap < 5; tap++ )
++        {
++          FT_Int  sx;
++
++
++          sx = (FT_Int)x + 2 - (FT_Int)tap;
++
++          if ( sx >= 0 && (FT_UInt)sx < width )
++            sum += (FT_UInt)source[sx] * weights[tap];
++        }
++
++        result = ( sum + 128U ) >> 8;
++
++        /*
++         * Permit experimental environment-provided arrays whose total
++         * exceeds 0x100 without wrapping the output byte.
++         */
++        if ( result > 255U )
++          result = 255U;
++
++        target[x] = (FT_Byte)result;
++      }
++    }
++
++    FT_FREE( source );
++
++    return FT_Err_Ok;
++  }
++
+   /* documentation is in ftoutln.h */
+ 
+   FT_EXPORT_DEF( FT_Error )
+@@ -671,6 +920,7 @@
+                          const FT_Bitmap  *abitmap )
+   {
+     FT_Raster_Params  params;
++    FT_Error          error;
+ 
+ 
+     if ( !abitmap )
+@@ -682,11 +932,20 @@
+     params.flags  = 0;
+ 
+     if ( abitmap->pixel_mode == FT_PIXEL_MODE_GRAY  ||
+-         abitmap->pixel_mode == FT_PIXEL_MODE_LCD   ||
+-         abitmap->pixel_mode == FT_PIXEL_MODE_LCD_V )
++      abitmap->pixel_mode == FT_PIXEL_MODE_LCD   ||
++      abitmap->pixel_mode == FT_PIXEL_MODE_LCD_V )
+       params.flags |= FT_RASTER_FLAG_AA;
+ 
+-    return FT_Outline_Render( library, outline, &params );
++    error = FT_Outline_Render( library, outline, &params );
++
++    /*
++     * Skia's A8 outline path reaches FT_Outline_Get_Bitmap()
++     * instead of the FT_Render_Glyph()/ft_smooth_render() path.
++     */
++    if ( !error && abitmap->pixel_mode == FT_PIXEL_MODE_GRAY )
++      error = ft_outline_filter_gray_bitmap( library, abitmap );
++
++    return error;
+   }
+ 
+ 
+diff -ru a/src/smooth/ftsmooth.c b/src/smooth/ftsmooth.c
+--- a/src/smooth/ftsmooth.c	2026-03-11 11:35:37.000000000 -0500
++++ b/src/smooth/ftsmooth.c	2026-07-25 14:17:05.831075891 -0500
+@@ -84,6 +84,294 @@
+ 
+   } TOrigin;
+ 
++#define FT_GRAY_FILTER_PPEM_DEFAULT  16U
++
++  typedef struct  FT_GrayRendererRec_
++  {
++    FT_RendererRec  root;
++
++    FT_Bool  gray_filter_enabled;
++    FT_UInt  gray_filter_ppem;
++
++    FT_Byte  gray_weights[5];
++    FT_Byte  gray_weights_final[5];
++
++  } FT_GrayRendererRec, *FT_GrayRenderer;
++
++  static FT_Bool
++  ft_smooth_gray_is_separator( char  c )
++  {
++    return c == ' '  ||
++    c == '\t' ||
++    c == ','  ||
++    c == ':'  ||
++    c == ';';
++  }
++
++
++  /*
++   * Parse five hexadecimal byte values.
++   *
++   * Accepted examples:
++   *
++   *   00,15,D6,15,00
++   *   0x00:0x15:0xD6:0x15:0x00
++   *   00 15 D6 15 00
++   */
++  static FT_Bool
++  ft_smooth_gray_parse_weights( const char*  text,
++                                FT_Byte       weights[5] )
++  {
++    const char*  p;
++    char*        end;
++    FT_Long      value;
++    FT_UInt      i;
++
++
++    if ( !text || !*text )
++      return 0;
++
++    p = text;
++
++    for ( i = 0; i < 5; i++ )
++    {
++      while ( *p && ft_smooth_gray_is_separator( *p ) )
++        p++;
++
++      if ( !*p )
++        return 0;
++
++      /*
++       * Base 16 means both "15" and "0x15" are interpreted
++       * as hexadecimal.
++       */
++      value = ft_strtol( p, &end, 16 );
++
++      if ( end == p || value < 0 || value > 0xFF )
++        return 0;
++
++      weights[i] = (FT_Byte)value;
++      p          = end;
++    }
++
++    while ( *p && ft_smooth_gray_is_separator( *p ) )
++      p++;
++
++    /* Reject trailing text or a sixth value. */
++    return *p == '\0';
++  }
++
++
++  static FT_UInt
++  ft_smooth_gray_parse_ppem( const char*  text,
++                             FT_UInt      fallback )
++  {
++    char*    end;
++    FT_Long  value;
++
++
++    if ( !text || !*text )
++      return fallback;
++
++    value = ft_strtol( text, &end, 10 );
++
++    if ( end == text || value < 0 || value > 0xFFFFL )
++      return fallback;
++
++    while ( *end == ' ' || *end == '\t' )
++      end++;
++
++    if ( *end )
++      return fallback;
++
++    return (FT_UInt)value;
++  }
++
++  static void
++  ft_smooth_gray_filter_init( FT_Renderer  render )
++  {
++    static const FT_Byte  weights_default[5] =
++    {
++      0x00, 0x10, 0xE0, 0x10, 0x00
++    };
++
++    static const FT_Byte  weights_final_default[5] =
++    {
++      0x00, 0x1D, 0xC6, 0x1D, 0x00
++    };
++
++    FT_GrayRenderer  gray = (FT_GrayRenderer)render;
++    const char*      value;
++    FT_Byte          parsed[5];
++
++
++    gray->gray_filter_enabled = 1;
++    gray->gray_filter_ppem    = FT_GRAY_FILTER_PPEM_DEFAULT;
++
++    ft_memcpy( gray->gray_weights,
++               weights_default,
++               sizeof ( gray->gray_weights ) );
++
++    ft_memcpy( gray->gray_weights_final,
++               weights_final_default,
++               sizeof ( gray->gray_weights_final ) );
++
++    /*
++     * FREETYPE_GRAY_FILTER=0 disables the patch.
++     * Any other nonempty value leaves it enabled.
++     */
++    value = ft_getenv( "FREETYPE_GRAY_FILTER" );
++
++    if ( value && value[0] == '0' && value[1] == '\0' )
++      gray->gray_filter_enabled = 0;
++
++    value = ft_getenv( "FREETYPE_GRAY_FILTER_PPEM" );
++
++    gray->gray_filter_ppem =
++    ft_smooth_gray_parse_ppem( value,
++                               FT_GRAY_FILTER_PPEM_DEFAULT );
++
++    value = ft_getenv( "FREETYPE_GRAY_FILTER_WEIGHTS" );
++
++    if ( ft_smooth_gray_parse_weights( value, parsed ) )
++    {
++      ft_memcpy( gray->gray_weights,
++                 parsed,
++                 sizeof ( gray->gray_weights ) );
++
++      value = ft_getenv( "FREETYPE_GRAY_FILTER_WEIGHTS_FINAL" );
++    }
++
++    if ( ft_smooth_gray_parse_weights( value, parsed ) )
++    {
++      ft_memcpy( gray->gray_weights_final,
++                 parsed,
++                 sizeof ( gray->gray_weights_final ) );
++    }
++  }
++
++  static FT_Error
++  ft_smooth_filter_gray( FT_Renderer   render,
++                         FT_GlyphSlot  slot )
++  {
++    FT_GrayRenderer  gray   = (FT_GrayRenderer)render;
++    FT_Bitmap*       bitmap = &slot->bitmap;
++    FT_Memory        memory = render->root.memory;
++    FT_Error         error  = FT_Err_Ok;
++
++    const FT_Byte*   weights;
++    FT_Byte*         filtered = NULL;
++
++    FT_UInt  ppem;
++    FT_UInt  src_width;
++    FT_UInt  dst_width;
++    FT_Int   src_pitch;
++    FT_Int   dst_pitch;
++    FT_UInt  y;
++    FT_UInt  x;
++
++
++    if ( !gray->gray_filter_enabled )
++      return FT_Err_Ok;
++
++    if ( bitmap->pixel_mode != FT_PIXEL_MODE_GRAY ||
++      !bitmap->buffer                          ||
++      !bitmap->width                           ||
++      !bitmap->rows )
++      return FT_Err_Ok;
++
++    /*
++     * x_ppem is the horizontal size of the scaled EM square.
++     * It is the appropriate size proxy for vertical-stem width.
++     */
++    ppem = 0;
++
++    if ( slot->face && slot->face->size )
++      ppem = slot->face->size->metrics.x_ppem;
++
++    /*
++     * The primary weights apply through the configured threshold.
++     * The stronger final weights apply above it.
++     */
++    if ( ppem > gray->gray_filter_ppem )
++      weights = gray->gray_weights_final;
++    else
++      weights = gray->gray_weights;
++
++    src_width = bitmap->width;
++    src_pitch = bitmap->pitch;
++
++    if ( src_width > (FT_UInt)FT_INT_MAX - 4U )
++      return FT_THROW( Raster_Overflow );
++
++    dst_width = src_width + 4U;
++    dst_pitch = (FT_Int)dst_width;
++
++    if ( FT_ALLOC_MULT( filtered, bitmap->rows, dst_pitch ) )
++      return error;
++
++    for ( y = 0; y < bitmap->rows; y++ )
++    {
++      const FT_Byte*  src;
++      FT_Byte*        dst;
++
++
++      dst = filtered + y * dst_pitch;
++
++      if ( src_pitch >= 0 )
++        src = bitmap->buffer + y * (FT_UInt)src_pitch;
++      else
++        src = bitmap->buffer +
++        ( bitmap->rows - 1U - y ) *
++        (FT_UInt)( -src_pitch );
++
++      for ( x = 0; x < dst_width; x++ )
++      {
++        FT_UInt  sum;
++        FT_UInt  result;
++        FT_UInt  tap;
++
++
++        sum = 0;
++
++        for ( tap = 0; tap < 5; tap++ )
++        {
++          FT_Int  sx;
++
++
++          sx = (FT_Int)x - (FT_Int)tap;
++
++          if ( sx >= 0 && (FT_UInt)sx < src_width )
++            sum += (FT_UInt)src[sx] * weights[tap];
++        }
++
++        result = ( sum + 128U ) >> 8;
++
++        /*
++         * Environment-provided weights are allowed to total more
++         * than 256, so saturate rather than allowing byte overflow.
++         */
++        if ( result > 255U )
++          result = 255U;
++
++        dst[x] = (FT_Byte)result;
++      }
++    }
++
++    FT_FREE( bitmap->buffer );
++
++    bitmap->buffer = filtered;
++    bitmap->width  = dst_width;
++    bitmap->pitch  = dst_pitch;
++
++    /*
++     * The original center tap is at destination offset +2.
++     */
++    slot->bitmap_left -= 2;
++
++    return FT_Err_Ok;
++  }
++
+ #ifndef FT_CONFIG_OPTION_SUBPIXEL_RENDERING
+ 
+   /* initialize renderer -- init its raster */
+@@ -92,6 +380,8 @@
+   {
+     FT_Renderer  render = (FT_Renderer)module;
+ 
++    ft_smooth_gray_filter_init( render );
++
+     FT_Vector*  sub = render->root.library->lcd_geometry;
+ 
+ 
+@@ -265,6 +555,7 @@
+   {
+     FT_Renderer  render = (FT_Renderer)module;
+ 
++    ft_smooth_gray_filter_init( render );
+ 
+     /* set up default LCD filtering */
+     FT_Library_SetLcdFilter( render->root.library, FT_LCD_FILTER_DEFAULT );
+@@ -634,6 +925,12 @@
+ 
+         error = render->raster_render( render->raster, &params );
+       }
++      /*
++       * Apply the new whole-pixel grayscale filter after coverage
++       * rasterization.
++       */
++      if ( !error )
++        error = ft_smooth_filter_gray( render, slot );
+     }
+     else
+     {
+@@ -666,7 +963,7 @@
+     ft_smooth_renderer_class,
+ 
+       FT_MODULE_RENDERER,
+-      sizeof ( FT_RendererRec ),
++      sizeof ( FT_GrayRendererRec ),
+ 
+       "smooth",
+       0x10000L,

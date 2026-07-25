@@ -90,8 +90,8 @@ It's enabled by default with the values specified below but can be adjusted with
 ```
 export FREETYPE_GRAY_FILTER=1
 export FREETYPE_GRAY_FILTER_PPEM=22
-export FREETYPE_GRAY_FILTER_WEIGHTS=00,15,D6,15,00
-export FREETYPE_GRAY_FILTER_WEIGHTS_FINAL=00,25,B6,25,00
+export FREETYPE_GRAY_FILTER_WEIGHTS=00,10,E0,10,00
+export FREETYPE_GRAY_FILTER_WEIGHTS_FINAL=00,1D,C6,1D,00
 ```
 
 I found that less aggressive filtering was good at smaller point sizes but not at higher ones, meaning it made sense to add a cutoff point where the filter changes to something stronger.  Serif fonts typically need stronger values than sans serif fonts, and having environment variables lets you customize launchers per-program to suit the need.
