@@ -77,9 +77,9 @@ See the chromium folder for a script that is able to patch chromium-based browse
 
 ### Grayscale FIR Filter
 
-Of particular note is the Grayscale FIR Filter.  As far as I know, no such patch has ever been developed or available.  I developed it with the help of ChatGPT to apply essentially the same logic that the standard LCD filter does to subpixels, but to whole pixels.  The need arose because often you will encounter grayscale text that looks very different than its subpixel equivalent, with a mix of sharp and blurry stems.  The filter splits the intensities across neighboring pixels, which makes it slightly blurry but substantially more uniform and nearly indistinguishable from subpixel rendering except upon examination (at least on my 4k monitors).
+Of particular note is the Grayscale FIR Filter.  As far as I know, no such patch has ever been developed, and it would have been good to have 15 years ago.  I developed it with the help of ChatGPT to apply essentially the same logic that the standard LCD filter does to subpixels, but to whole pixels.  The need arose because often you will encounter grayscale text that looks very different than its subpixel equivalent, with a mix of sharp and blurry vertical stems.  The filter splits the intensities across neighboring pixels, which makes it slightly blurry but substantially more uniform and nearly indistinguishable from subpixel rendering except upon close examination (at least on my 4k monitors).  This is always the tradeoff with rasterized fonts- blurry but uniform vs. sharp but uneven.  Admittedly, the need for a patch like this dwindles as resolutions increase, however I still notice problems even on 4k monitors, and I'm a font-rendering and smoothness maxxer.
 
-Unfortunately, the place you most often encounter grayscale text is in chromium-derived browsers and electron apps, due to their aggressive reduction to grayscale during compositing steps.  Chromium brought most font rendering into its codebase, meaning that this patch will have no effect for those applications.  The difference can be seen desktop applications that use freetype directly, e.g. calibre, which renders its reader text in grayscale (qtwebengine), and also firefox, thunderbird, gtk, etc.
+Unfortunately, the place you most often encounter grayscale text is in chromium-based browsers and electron apps, due to chromium's aggressive reduction to grayscale during compositing steps, and since chromium brought most font rendering into its codebase, this patch will have no effect for such applications.  The difference *can* be seen desktop applications that use freetype directly, like firefox, thunderbird, gtk and Qt apps, and calibre, which renders its reader text in grayscale (via qtwebengine) and can't be changed to use subpixel rendering through flags, settings, or environment variables.
 
 It's implemented as a 5-tap filter, but practically, only 3 would ever be needed.  It's also implemented in 2 rendering paths:
  - ftsmooth.c (impacts firefox, thunderbird, gtk)
@@ -94,7 +94,7 @@ export FREETYPE_GRAY_FILTER_WEIGHTS=00,10,E0,10,00
 export FREETYPE_GRAY_FILTER_WEIGHTS_FINAL=00,1D,C6,1D,00
 ```
 
-I found that less aggressive filtering was good at smaller point sizes but not at higher ones, meaning it made sense to add a cutoff point where the filter changes to something stronger.  Serif fonts typically need stronger values than sans serif fonts, and having environment variables lets you customize launchers per-program to suit the need.
+For serif fonts like EB Garamond in calibre, I found that less aggressive filtering was good at smaller point sizes but not at higher ones, meaning it made sense to add a cutoff point where the filter changes to something stronger.  Serif fonts typically need stronger values than sans serif fonts, and having environment variables lets you customize launchers per-program to suit the need.  Many people would find that setting both FREETYPE_GRAY_FILTER_WEIGHTS and FREETYPE_GRAY_FILTER_WEIGHTS_FINAL to the same value looks just fine, but the variables are there for tweaking.
 
 Some other values to try:
 
