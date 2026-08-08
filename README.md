@@ -27,7 +27,33 @@ This is a build of Fontforge that has Truetype debugging enabled, but is otherwi
 
 ### Subpixel Filtering
 
-This is not a package for Fedora but a script that should run fine on most distros to adjust the LCD filtering.  I'm working with LLMs to attempt to create binary patches for chromium to fix some of the subpixel rendering related things they broke or made unconfigurable at runtime, but the script that exists in the chromium folder is just for applying the Gibson LCD filter to subpixel rendered text across all chromium based browsers (Chrome, Chromium, Edge, Vivaldi, Opera, Brave, etc.)  See the details of what it does below, in the Freetype section.  The script started out as a simple bgrep command followed by a dd to perform the replacement, but I had Claude fill it in with useful options.  See the script for usage, but basically, the simplest invocation of it is to close all chromium based browsers, then run (without parameters) with sudo or as root to patch them.  This will of course need to be run every time the browser(s) is updated.  I found the original script to do this online, perhaps over 10 years ago, but I can't find it anymore to give credit to the original author for the concept and execution.
+This is not a package for Fedora but a script that should run fine on most distros to adjust the LCD filtering.  I'm working with LLMs to attempt to create binary patches for chromium to fix some of the subpixel rendering related things they broke or made unconfigurable at runtime, but the script that exists in the chromium folder is just for applying the Gibson LCD filter to subpixel rendered text across all chromium based browsers (Chrome, Chromium, Edge, Vivaldi, Opera, Brave, etc.)  See the details of what it does below, in the Freetype section regarding the Gibson filter.
+
+The script started out as a simple bgrep command followed by a dd to perform the replacement, but I had Claude fill it in with useful options.  See the script for usage, but basically, the simplest invocation of it is to close all chromium based browsers, then run (without parameters) with sudo or as root to patch them.  This will of course need to be run every time the browser(s) is updated.  I found the original script to do this online, perhaps over 10 years ago, but I can't find it anymore to give credit to the original author for the concept and execution.
+
+### Mimicking the Grayscale FIR Filter
+
+For chromium based browsers, even when using LCD rendering (via flags like this: `--disable-font-subpixel-positioning --disable-prefer-compositing-to-lcd-text --enable-lcd-text --enable-features=AllowLCDTextWithFilter`), chromium will still revert to grayscale frequently when compositing is required, meaning you're going to get grayscale text on some spots on many sites.  Chromium based browsers don't fully use the system's freetype for the grayscale rendering path, meaning the Grayscale FIR filter patch for freetype can't be leveraged.  But the filter can be mimicked through CSS text-shadow, and applied globally or per-site by the StyleBot extension.  This dramatically smooths out the striking visual differences of the grayscale text (particularly the non-uniformity of stems) compared to LCD rendered text, at the expense of sharpness.  Because this is CSS, it can often also be used in Electron apps as long as there is a way to apply custom CSS.
+
+This (imperfectly) mimics what FIR filtering does, by cloning the text at a very low opacity, then shifting them to both the left and right side of the text.  The reason it is imperfect it because it's not truly distributing the intensities across neighboring pixels;  It's *adding* more intensity on both sides.  This can be compensated for by reducing the opacity of the original text using `-webkit-text-fill-color`, but this noticeably lightens the text with anything below ~90%.  In general, expect heavier looking text.
+
+```
+body {
+  text-shadow:
+    -0.666667px 0 0 rgb(from currentColor r g b / 7.5%),
+    0.666667px 0 0 rgb(from currentColor r g b / 7.5%);
+
+  -webkit-text-fill-color:
+    rgb(from currentColor r g b / 97.5%);
+}
+```
+
+
+The percentages in the text-shadow can be adjusted up and down for a stronger or lighter effect, with 7.5% / 97.5% being the best middle point of the tradeoffs.
+
+In Stylebot options, you would add a new style, and apply it either globally, with  `*` (not recommended unless using `--disable-lcd-text` which globally disables subpixel rendering), or on a per-site basis with specific domains like this:  `gemini.google.com, chatgpt.com, github.com, teams.cloud.microsoft, *.elastic.co`.  You can also create additional rules, using stronger or lighter values, to apply to other sites that need different amounts of smoothing.  One drawback here is that there is no way to differentiate between LCD and grayscale text;  it applies to the site and element(s) you choose, regardless.  But often, for sites imapacted by grayscale text, most of the site needs treatment, and the spots that don't, which use subpixel rendering, are an acceptable sacrifice to unnecessarily smooth further.
+
+Notably, since this is done in CSS, you can use this on *any* platform, including Windows, to smooth out some pretty rough text that happens by default.
 
 
 ## Freetype
@@ -167,7 +193,7 @@ simply falls back to:
 
 rather than partially changing the filter.
 
-Note that if the sum of the weights is more than `0xFF` (255 decimal) you may see artifcats.
+Note that if the sum of the weights is more than `0xFF` (255 decimal) you may see artifacts.
 
 
 See the chromium folder for a script that is able to patch chromium-based browser binaries, which do not use the system's freetype.  (Requires:  bgrep)
