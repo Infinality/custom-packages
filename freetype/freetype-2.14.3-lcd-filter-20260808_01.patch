@@ -1,0 +1,173 @@
+--- a/src/base/ftlcdfil.c	2026-03-11 11:35:37.000000000 -0500
++++ b/src/base/ftlcdfil.c	2026-08-08 07:24:51.047683465 -0500
+@@ -25,6 +25,97 @@
+ 
+ #ifdef FT_CONFIG_OPTION_SUBPIXEL_RENDERING
+ 
++  /*
++  * Parse five comma-separated hexadecimal LCD filter weights.
++  *
++  * Examples:
++  *
++  *   1c,38,56,38,1c
++  *   1C,38,56,38,1C
++  *   0x1c,0x38,0x56,0x38,0x1c
++  *
++  * Whitespace around values and commas is allowed.
++  *
++  * `weights` is modified only if the complete string is valid.
++  */
++  static FT_Bool
++  ft_lcd_parse_filter_weights( const char*          text,
++                              FT_LcdFiveTapFilter  weights )
++  {
++    FT_LcdFiveTapFilter  parsed;
++    const char*          p;
++    char*                end;
++    FT_UInt              i;
++
++
++    if ( !text || !*text )
++      return 0;
++
++    p = text;
++
++    for ( i = 0; i < FT_LCD_FILTER_FIVE_TAPS; i++ )
++    {
++      FT_Long  value;
++
++
++      /* Skip leading whitespace. */
++      while ( *p == ' '  ||
++        *p == '\t' ||
++        *p == '\r' ||
++        *p == '\n' )
++        p++;
++
++      if ( !*p )
++        return 0;
++
++      /*
++      * Base 16 intentionally allows both
++      *
++      *   1c
++      *
++      * and
++      *
++      *   0x1c
++      */
++      value = ft_strtol( p, &end, 16 );
++
++      if ( end == p || value < 0 || value > 0xFF )
++        return 0;
++
++      parsed[i] = (FT_Byte)value;
++      p         = end;
++
++      /* Skip trailing whitespace. */
++      while ( *p == ' '  ||
++        *p == '\t' ||
++        *p == '\r' ||
++        *p == '\n' )
++        p++;
++
++      if ( i + 1 < FT_LCD_FILTER_FIVE_TAPS )
++      {
++        if ( *p != ',' )
++          return 0;
++
++        p++;
++      }
++      else
++      {
++        /* Nothing except whitespace is allowed after value five. */
++        if ( *p != '\0' )
++          return 0;
++      }
++    }
++
++    /*
++    * Only update the caller's array after all five values
++    * have successfully parsed.
++    */
++    ft_memcpy( weights, parsed, FT_LCD_FILTER_FIVE_TAPS );
++
++    return 1;
++  }
++
+   /* add padding sufficient for a 5-tap filter, */
+   /* which is 2/3 of a pixel                    */
+   FT_BASE_DEF( void )
+@@ -72,9 +163,10 @@
+                            FT_LcdFilter  filter )
+   {
+     static const FT_LcdFiveTapFilter  default_weights =
+-                   { 0x08, 0x4d, 0x56, 0x4d, 0x08 };
++    { 0x1c, 0x38, 0x56, 0x38, 0x1c };
++
+     static const FT_LcdFiveTapFilter  light_weights =
+-                   { 0x00, 0x55, 0x56, 0x55, 0x00 };
++    { 0x20, 0x38, 0x49, 0x38, 0x20 };
+ 
+ 
+     if ( !library )
+@@ -82,26 +174,40 @@
+ 
+     switch ( filter )
+     {
+-    case FT_LCD_FILTER_NONE:
+-      ft_memset( library->lcd_weights,
+-                 0,
+-                 FT_LCD_FILTER_FIVE_TAPS );
+-      break;
+-
+-    case FT_LCD_FILTER_DEFAULT:
+-      ft_memcpy( library->lcd_weights,
+-                 default_weights,
+-                 FT_LCD_FILTER_FIVE_TAPS );
+-      break;
+-
+-    case FT_LCD_FILTER_LIGHT:
+-      ft_memcpy( library->lcd_weights,
+-                 light_weights,
+-                 FT_LCD_FILTER_FIVE_TAPS );
+-      break;
++      case FT_LCD_FILTER_NONE:
++        ft_memset( library->lcd_weights,
++                   0,
++                   FT_LCD_FILTER_FIVE_TAPS );
++        break;
++
++      case FT_LCD_FILTER_DEFAULT:
++        /*
++         * Use the environment override if it is present and valid.
++         * Otherwise retain our compiled-in default.
++         */
++        if ( !ft_lcd_parse_filter_weights(
++          ft_getenv( "FREETYPE_LCD_FILTER_WEIGHTS_DEFAULT" ),
++                                          library->lcd_weights ) )
++          ft_memcpy( library->lcd_weights,
++                     default_weights,
++                     FT_LCD_FILTER_FIVE_TAPS );
++          break;
++
++      case FT_LCD_FILTER_LIGHT:
++        /*
++         * Use the environment override if it is present and valid.
++         * Otherwise retain our compiled-in light filter.
++         */
++        if ( !ft_lcd_parse_filter_weights(
++          ft_getenv( "FREETYPE_LCD_FILTER_WEIGHTS_LIGHT" ),
++                                          library->lcd_weights ) )
++          ft_memcpy( library->lcd_weights,
++                     light_weights,
++                     FT_LCD_FILTER_FIVE_TAPS );
++          break;
+ 
+-    default:
+-      return FT_THROW( Invalid_Argument );
++      default:
++        return FT_THROW( Invalid_Argument );
+     }
+ 
+     return FT_Err_Ok;

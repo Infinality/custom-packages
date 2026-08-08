@@ -38,13 +38,13 @@ Freetype with patches I like:
 
 - Bytecode Interpreter enabled
 - Gibson LCD filter instead of default LCD filter
-- Extra weight Gibson LCD filter instead of light LCD filter
+- Extra smooth LCD filter instead of light LCD filter
 - Grayscale FIR filter similar to the LCD filter but for grayscale
 - No emboldening in the vertical direction when emboldening is requested
 
 ### Gibson LCD Filter
 
-The Gibson filter replaces the default LCD filter in ftlcdfil.c with one that spreads the intensities more broadly across subpixels, resulting in a smoother, less "color fringey" appearance.
+By default, the Gibson filter replaces the default LCD filter in ftlcdfil.c with one that spreads the intensities more broadly across subpixels, resulting in a smoother, less "color fringey", and more uniform appearance.
 
 This:
 `{ 0x08, 0x4d, 0x56, 0x4d, 0x08 }`
@@ -54,15 +54,15 @@ Becomes this:
 
 See the chromium folder for a script that is able to patch chromium-based browser binaries, which do not use the system's freetype.  (Requires:  bgrep)
 
-### Extra Weight Gibson LCD Filter
+### Extra Smooth LCD Filter
 
-The Extra-Weight Gibson filter replaces the light LCD filter in ftlcdfil.c with one that spreads the intensities more broadly across subpixels, *and adds extra weight*, resulting in a smoother, heavier, and less "color fringey" appearance.  Replacing the stock "light" filter with this made sense since it's doubtful many people even use it.
+By default, the Extra Smooth LCD filter replaces the light LCD filter in ftlcdfil.c with one that spreads the intensities even more broadly across subpixels, resulting in a smoother appearance than the Gibson LCD filter.  Replacing the stock "light" filter with this made sense since it's doubtful many people even use it.  The use case might be for programs, fonts, or font sizes that need more filtering that the default.
 
 This:
 `{ 0x00, 0x55, 0x56, 0x55, 0x00 }`
 
 Becomes this:
-`{ 0x1c, 0x38, 0x61, 0x38, 0x1c }`
+`{ 0x20, 0x38, 0x49, 0x38, 0x20 }`
 
 This can be leveraged in fontconfig rules this way:
 
@@ -72,6 +72,103 @@ This can be leveraged in fontconfig rules this way:
    <const>lcdlight</const>
   </edit>
 ```
+
+These values can be controlled with environment variables
+
+```
+export FREETYPE_LCD_FILTER_WEIGHTS_DEFAULT=1c,38,56,38,1c
+export FREETYPE_LCD_FILTER_WEIGHTS_LIGHT=00,1D,C6,1D,00
+```
+
+Some other values to try with FREETYPE_LCD_FILTER_WEIGHTS_DEFAULT and FREETYPE_LCD_FILTER_WEIGHTS_LIGHT:
+
+```
+Minimum:     00,00,FF,00,00    (For reference - No filtering)
+Very Sharp:  00,55,56,55,00    (Freetype "light" filtering)
+Sharp:       04,51,56,51,04
+Medium:      08,4D,56,4D,08    (Freetype "default" filtering)
+Smooth:      10,45,56,45,10
+Smooth:      1c,38,56,38,1c    (Gibson filter)
+Very Smooth: 20,38,49,38,20    (Extra Smooth filter)
+Maximum:     33,33,33,33,33    (For reference - Fully distributed)
+```
+
+#### FREETYPE_LCD_FILTER_WEIGHTS_DEFAULT
+
+Environment variable that controls the LCD filter values for freetype's "default" filter.  Leveraged in fontconfig like this:
+
+```
+  <!-- lcddefault, lcdlight, lcdnone, lcdlegacy -->
+  <edit mode="assign" name="lcdfilter">
+   <const>lcddefault</const>
+  </edit>
+```
+
+#### FREETYPE_LCD_FILTER_WEIGHTS_LIGHT
+
+Environment variable that controls the LCD filter values for freetype's "light" filter.  Leveraged in fontconfig like this:
+
+```
+  <!-- lcddefault, lcdlight, lcdnone, lcdlegacy -->
+  <edit mode="assign" name="lcdfilter">
+   <const>lcdlight</const>
+  </edit>
+```
+
+With neither variable set:
+
+```
+unset FREETYPE_LCD_FILTER_WEIGHTS_DEFAULT
+unset FREETYPE_LCD_FILTER_WEIGHTS_LIGHT
+```
+
+you get the patched defaults:
+
+```
+DEFAULT = 1c,38,56,38,1c
+LIGHT   = 20,38,49,38,20
+```
+
+You could then experiment:
+
+```
+FREETYPE_LCD_FILTER_WEIGHTS_DEFAULT=10,40,70,40,10 some-program
+```
+
+or:
+
+```
+FREETYPE_LCD_FILTER_WEIGHTS_LIGHT=00,40,80,40,00 some-program
+```
+
+It also accepts:
+
+```
+FREETYPE_LCD_FILTER_WEIGHTS_DEFAULT='0x1c, 0x38, 0x56, 0x38, 0x1c'
+```
+
+For both, an invalid value such as:
+
+```
+FREETYPE_LCD_FILTER_WEIGHTS_DEFAULT='1c,38,999,38,1c'
+```
+
+or:
+
+```
+FREETYPE_LCD_FILTER_WEIGHTS_DEFAULT='1c,38,56'
+```
+
+simply falls back to:
+
+```
+1c,38,56,38,1c
+```
+
+rather than partially changing the filter.
+
+Note that if the sum of the weights is more than `0xFF` (255 decimal) you may see artifcats.
+
 
 See the chromium folder for a script that is able to patch chromium-based browser binaries, which do not use the system's freetype.  (Requires:  bgrep)
 
