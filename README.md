@@ -33,9 +33,9 @@ The script started out as a simple bgrep command followed by a dd to perform the
 
 ### Mimicking the Grayscale FIR Filter
 
-For chromium based browsers, even when using LCD rendering (via flags like this: `--disable-font-subpixel-positioning --disable-prefer-compositing-to-lcd-text --enable-lcd-text --enable-features=AllowLCDTextWithFilter`), chromium will still revert to grayscale frequently when compositing is required, meaning you're going to get grayscale text on some spots on many sites.  Chromium based browsers don't fully use the system's freetype for the grayscale rendering path, meaning the Grayscale FIR filter patch for freetype can't be leveraged.  But the filter can be mimicked through CSS text-shadow, and applied globally or per-site by the StyleBot extension.  This dramatically smooths out the striking visual differences of the grayscale text (particularly the non-uniformity of stems) compared to LCD rendered text, at the expense of sharpness.  Because this is CSS, it can often also be used in Electron apps as long as there is a way to apply custom CSS.
+For chromium based browsers, even when using LCD rendering (via flags like this: `--disable-font-subpixel-positioning --disable-prefer-compositing-to-lcd-text --enable-lcd-text --enable-features=AllowLCDTextWithFilter`), chromium will still revert to grayscale frequently when compositing is required, meaning you're going to get grayscale text on some spots on many sites.  Chromium based browsers don't fully use the system's freetype for the grayscale rendering path, meaning the Grayscale FIR filter patch for freetype (below) can't be leveraged.  But the filter can be mimicked through CSS text-shadow, and applied globally or per-site by the StyleBot extension.  This dramatically smooths out the striking visual differences of the grayscale text (particularly the non-uniformity of stems) compared to LCD rendered text, at the expense of sharpness.  Because this is CSS, it can often also be used in Electron apps as long as there is a way to apply custom CSS.
 
-This (imperfectly) mimics what FIR filtering does, by cloning the text at a very low opacity, then shifting them to both the left and right side of the text.  The reason it is imperfect it because it's not truly distributing the intensities across neighboring pixels;  It's *adding* more intensity on both sides.  This can be compensated for by reducing the opacity of the original text using `-webkit-text-fill-color`, but this noticeably lightens the text with anything below ~90%.  In general, expect heavier looking text.
+This (imperfectly) mimics what FIR filtering does, by cloning the text at a very low opacity, then shifting the clones to both the left and right side of the text.  The reason it is imperfect it because it's not truly distributing the intensities across neighboring pixels;  It's *adding* more intensity on both sides.  This can be compensated for by reducing the opacity of the original text using `-webkit-text-fill-color`, but this noticeably lightens the text with anything below ~90%.  In general, expect heavier looking text.
 
 ```
 body {
@@ -60,15 +60,20 @@ Notably, since this is done in CSS, you can use this on *any* platform, includin
 
 https://copr.fedorainfracloud.org/coprs/infinality/freetype/
 
-Freetype with patches I like:
+Freetype with patches and settings I like:
 
 - Bytecode Interpreter enabled
-- Gibson LCD filter instead of default LCD filter
-- Extra smooth LCD filter instead of light LCD filter
-- Grayscale FIR filter similar to the LCD filter but for grayscale
 - No emboldening in the vertical direction when emboldening is requested
+- LCD Filter Patch
+    - Gibson LCD filter instead of default LCD filter
+    - Extra Smooth LCD filter instead of light LCD filter
+- Grayscale FIR filter similar to the LCD filter but for grayscale
 
-### Gibson LCD Filter
+### LCD Filter Patch
+
+The patch overrides the default and light filters with a smooth and extra smooth filter, and allows configuration of these values with environment variables.  Available in the freetype directory.
+
+#### Gibson LCD Filter
 
 By default, the Gibson filter replaces the default LCD filter in ftlcdfil.c with one that spreads the intensities more broadly across subpixels, resulting in a smoother, less "color fringey", and more uniform appearance.
 
@@ -80,7 +85,7 @@ Becomes this:
 
 See the chromium folder for a script that is able to patch chromium-based browser binaries, which do not use the system's freetype.  (Requires:  bgrep)
 
-### Extra Smooth LCD Filter
+#### Extra Smooth LCD Filter
 
 By default, the Extra Smooth LCD filter replaces the light LCD filter in ftlcdfil.c with one that spreads the intensities even more broadly across subpixels, resulting in a smoother appearance than the Gibson LCD filter.  Replacing the stock "light" filter with this made sense since it's doubtful many people even use it.  The use case might be for programs, fonts, or font sizes that need more filtering that the default.
 
@@ -98,6 +103,7 @@ This can be leveraged in fontconfig rules this way:
    <const>lcdlight</const>
   </edit>
 ```
+#### Configuration
 
 These values can be controlled with environment variables
 
@@ -119,7 +125,7 @@ Very Smooth: 20,38,49,38,20    (Extra Smooth filter)
 Maximum:     33,33,33,33,33    (For reference - Fully distributed)
 ```
 
-#### FREETYPE_LCD_FILTER_WEIGHTS_DEFAULT
+##### FREETYPE_LCD_FILTER_WEIGHTS_DEFAULT
 
 Environment variable that controls the LCD filter values for freetype's "default" filter.  Leveraged in fontconfig like this:
 
@@ -130,7 +136,7 @@ Environment variable that controls the LCD filter values for freetype's "default
   </edit>
 ```
 
-#### FREETYPE_LCD_FILTER_WEIGHTS_LIGHT
+##### FREETYPE_LCD_FILTER_WEIGHTS_LIGHT
 
 Environment variable that controls the LCD filter values for freetype's "light" filter.  Leveraged in fontconfig like this:
 
@@ -198,9 +204,9 @@ Note that if the sum of the weights is more than `0xFF` (255 decimal) you may se
 
 See the chromium folder for a script that is able to patch chromium-based browser binaries, which do not use the system's freetype.  (Requires:  bgrep)
 
-### Grayscale FIR Filter
+### Grayscale FIR Filter Patch
 
-Of particular note is the Grayscale FIR Filter.  As far as I know, no such patch has ever been developed, and it would have been better to have 15 years ago.  I developed it with the help of ChatGPT, to apply essentially the same logic that the standard LCD filter does to subpixels, but to whole pixels.  The need arose because often you will encounter grayscale text that looks very different than its subpixel equivalent, with a mix of sharp and blurry vertical stems.  Like the LCD filter does with subpixels, the grayscale filter splits the intensities across neighboring pixels, which makes it slightly blurry but substantially more uniform and nearly indistinguishable from subpixel rendering except upon close examination (at least on my 4k monitors).  This is always the tradeoff with rasterized fonts- blurry but uniform vs. sharp but uneven.  Admittedly, the need for a patch like this dwindles as resolutions increase, however I still notice problems even on 4k monitors, and I'm a font-rendering and smoothness maxxer.
+Of particular note is the Grayscale FIR Filter, available in the freetype directory.  As far as I know, no such patch has ever been developed, and it would have been better to have 15 years ago.  I developed it with the help of ChatGPT, to apply essentially the same logic that the standard LCD filter does to subpixels, but to whole pixels.  The need arose because often you will encounter grayscale text that looks very different than its subpixel equivalent, with a mix of sharp and blurry vertical stems.  Like the LCD filter does with subpixels, the grayscale filter splits the intensities across neighboring pixels, which makes it slightly blurry but substantially more uniform and nearly indistinguishable from subpixel rendering except upon close examination (at least on my 4k monitors).  This is always the tradeoff with rasterized fonts- blurry but uniform vs. sharp but uneven.  Admittedly, the need for a patch like this dwindles as resolutions increase, however I still notice problems even on 4k monitors, and I'm a font-rendering and smoothness maxxer.
 
 Unfortunately, the place you most often encounter grayscale text is in chromium-based browsers and electron apps, due to chromium's aggressive reduction to grayscale during compositing steps, and since chromium brought most font rendering into its codebase, this patch will have no effect for such applications.  The difference *can* be seen desktop applications that use freetype directly, like firefox, thunderbird, gtk and Qt apps, and calibre, which renders its reader text in grayscale (via qtwebengine) and can't be changed to use subpixel rendering through flags, settings, or environment variables.  Firefox and Thunderbird still have instances where text is rendered in grayscale though, even when subpixel rendering is set in about:config.
 
