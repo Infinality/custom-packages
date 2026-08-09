@@ -28,7 +28,7 @@ This is a build of Fontforge that has Truetype debugging enabled, but is otherwi
 
 https://copr.fedorainfracloud.org/coprs/infinality/qt6-qtbase/
 
-This is a custom build of qt6-qtbase that applies a patch to fix unhinted text (ignoring fontconfig rules) on fractional desktop scales (125%, 150%, 175%, etc.) that has been present for years, noticeable on KDE Plasma applications that use Qt.  Basically, it makes Qt applications respect the fontconfig hinting settings again instead of forcing everything to unhinted, which is very blurry at smaller point sizes.  It is otherwise identical to the stock fedora package.  The patch was developed with ChatGPT's help and is available in the qt6-qtbase directory.
+This is a custom build of qt6-qtbase that applies a patch to fix unhinted text (ignoring fontconfig rules) on fractional desktop scales (125%, 150%, 175%, etc.) that has been present for years, noticeable on KDE Plasma applications that use Qt (e.g. kwrite, konsole, kate, etc.).  Basically, it makes Qt applications respect the fontconfig hinting settings again instead of forcing everything to unhinted, which is very blurry at smaller point sizes.  It is otherwise identical to the stock fedora package.  The patch was developed with ChatGPT's help and is available in the qt6-qtbase directory.
 
 See **qt6-qtbase Patch Details** section below.
 
@@ -280,27 +280,84 @@ Grayscale filter weights that will be used **above** the specified point size in
 
 ## qt6-qtbase Patch Details
 
-This patches qt6-qtbase to fix unhinted text (ignoring fontconfig rules) on fractional desktop scales (125%, 150%, 175%, etc.) that has been present for years, noticeable on KDE Plasma applications that use Qt.  Basically, it makes Qt applications respect the fontconfig hinting settings again instead of forcing everything to unhinted, which is very blurry at smaller point sizes.  The patch was developed with ChatGPT's help and is available in the qt6-qtbase directory.
+This patches qt6-qtbase to fix unhinted text (ignoring fontconfig rules) on anything except 1x scaling, like fractional desktop scales (125%, 150%, 175%, etc.) that has been present for years, noticeable on KDE Plasma applications that use Qt.  Basically, it makes Qt applications respect the fontconfig hinting settings again instead of forcing everything to unhinted, which is very blurry at smaller point sizes.  The patch was developed with ChatGPT's help and is available in the qt6-qtbase directory.
 
 The following is a lightly edited explanation of the patch's behavior by ChatGPT.
 
 ======
 
-The corrected behavior is enabled by default. To restore stock Qt behavior:
+### Prototype patch description
 
-```
-QT_DISABLE_DPR_FONT_HINTING=1 kwrite
-```
+This is a proof-of-concept patch against QtBase 6.11.1 demonstrating a possible fix for DPR-scaled FreeType hinting. It is intended primarily to validate the rendering model described in the accompanying analysis rather than to prescribe the final upstream implementation.
 
-With the variable unset or set to 0, the patch does three things.
+The prototype changes the native FreeType path in four related areas:
 
-First, Qt no longer automatically replaces fontconfig's hint style with `HintNone` merely because DPR scaling exists. Stock Qt currently does exactly that in `defaultHintStyleFromMatch()`.
+**Fontconfig hint selection**
 
-Second, for scalable fonts in an application with a scaled screen, Qt uses design/fractional horizontal metrics. This fixes glyph spacing issues. Stock Qt otherwise uses hinted metrics for `HintMedium`/`HintFull`.
+The patch stops unconditionally replacing the fontconfig-selected default hint style with `HintNone` merely because DPR scaling is active. Qt 6.11.1 currently performs that suppression before evaluating the normal `FC_HINT_STYLE` result.
 
-Third, horizontal subpixel glyph positioning is enabled for that DPR-hinting path, while **vertical subpixel positioning remains stock**. Stock Qt normally permits horizontal fractional positioning only for `HintLight` and `HintNone`.
+This allows `hintslight`, `hintmedium`, `hintfull`, native-vs-autohint selection, etc. to reach the existing Qt/FreeType machinery normally.
 
+**Physical-ppem glyph hinting**
 
+For scalable fonts and a uniform positive scale, the patch incorporates the scale into the FreeType character size before glyph loading/rasterization.
 
+This is necessary because FreeType applies `FT_Set_Transform()` after glyph loading/hinting; otherwise Qt hints at logical ppem and subsequently scales the already-hinted outline.
 
+The logical FreeType size is restored after glyph generation so the shared face is not left at the temporary physical size.
+
+**Scalable horizontal metrics**
+
+The patch uses design/linear horizontal advances for the corrected DPR-hinting path rather than target-size-dependent fully hinted advances.
+
+Qt already stores both forms and normally selects the linear version for no/light hinting or explicit design-metric layout.
+
+This keeps layout scalable while allowing the glyph outline itself to be hinted at the physical device size.
+
+**Fractional horizontal glyph positioning**
+
+The prototype permits horizontal subpixel positioning for the corrected scalable-font path.
+
+Stock `QFontEngineFT` reports horizontal subpixel positioning only for `HintLight` and `HintNone`; as a result, `QTextEngine` rounds HarfBuzz x advances and offsets when `HintFull` is active.
+
+Preserving those fractional positions was necessary to eliminate context-dependent spacing errors at fractional scale factors.
+
+Vertical subpixel positioning is not intentionally enabled by this change; the goal is to retain the vertical grid fitting produced by the native hinter while preserving horizontal layout precision.
+
+### Runtime behavior
+
+The prototype is enabled by default.
+
+Setting:
+
+`QT_DISABLE_DPR_FONT_HINTING=1`
+
+restores the stock Qt behavior and is useful for A/B comparison.
+
+### Tested behavior
+
+The prototype was tested with Qt Widgets/KWrite using native TrueType hinting selected through fontconfig.
+
+Verified scale factors:
+
+* 100%
+* 125%
+* 150%
+* 175%
+* 200%
+
+Observed results:
+
+* correct native TrueType glyph shapes;
+* correct proportional spacing in tested Segoe UI cases;
+* correct Consolas 9 pt spacing;
+* no rendering artifacts noticed during those tests.
+
+### Known limitation / reason this is still a prototype
+
+The working implementation identifies a uniform positive glyph transform as the scale to fold into the FreeType ppem.
+
+That is sufficient to validate the approach but is not an ideal architectural distinction between device DPR and arbitrary application transforms.
+
+A preferable upstream implementation may be to propagate the paint-device/raster DPR separately to the font rasterizer and leave arbitrary `QPainter` transformations independent. This would allow `QFontEngineFT` to hint at the actual physical ppem without inferring the device scale from a composed transform.
 
