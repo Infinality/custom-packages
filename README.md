@@ -1,5 +1,5 @@
 # custom-packages
-Customized Packages for Fedora and RHEL Variants
+Customized packages, patches and tweaks for Fedora and RHEL variants, with an emphasis on making font rendering look better.
 
 
 
@@ -23,11 +23,37 @@ https://copr.fedorainfracloud.org/coprs/infinality/fontforge/
 
 This is a build of Fontforge that has Truetype debugging enabled, but is otherwise identical to the fedora version.  Note that there is likely an upstream bug that prevents the debugger from fully working (says "no instrs" when run).  The same issue happens on the Windows version, but doesn't happen on the 2023 version, which is what makes me think it's an upstream regression.
 
+
+## qt6-qtbase
+
+https://copr.fedorainfracloud.org/coprs/infinality/qt6-qtbase/
+
+This is a custom build of qt6-qtbase that applies a patch to fix unhinted text (ignoring fontconfig rules) on fractional desktop scales (125%, 150%, 175%, etc.) that has been present for years, noticeable on KDE Plasma applications that use Qt.  Basically, it makes Qt applications respect the fontconfig hinting settings again instead of forcing everything to unhinted, which is very blurry at smaller point sizes.  It is otherwise identical to the stock fedora package.  The patch was developed with ChatGPT's help and is available in the qt6-qtbase directory.
+
+See **qt6-qtbase Patch Details** section below.
+
+
+## Freetype
+
+https://copr.fedorainfracloud.org/coprs/infinality/freetype/
+
+Freetype with patches and settings I like:
+
+- Bytecode Interpreter enabled
+- No emboldening in the vertical direction when emboldening is requested
+- LCD Filter Patch
+    - Gibson LCD filter instead of default LCD filter
+    - Extra Smooth LCD filter instead of light LCD filter
+- Grayscale FIR filter similar to the LCD filter but for grayscale
+
+See **Freetype Patch Details** section below.
+
+
 ## Chromium Based Browsers
 
-### Subpixel Filtering
+### Subpixel Filtering Binary Patch Script
 
-This is not a package for Fedora but a script that should run fine on most distros to adjust the LCD filtering.  I'm working with LLMs to attempt to create binary patches for chromium to fix some of the subpixel rendering related things they broke or made unconfigurable at runtime, but the script that exists in the chromium folder is just for applying the Gibson LCD filter to subpixel rendered text across all chromium based browsers (Chrome, Chromium, Edge, Vivaldi, Opera, Brave, etc.)  See the details of what it does below, in the Freetype section regarding the Gibson filter.
+This is not a package for Fedora but a script that should run fine on most distros to adjust the LCD filtering.  The script is in the chromium folder and is for applying the Gibson LCD filter (configurable) to subpixel rendered text across all chromium based browsers (Chrome, Chromium, Edge, Vivaldi, Opera, Brave, etc.), instead of the stock LCD filter.  See the details of what it does below, in the Freetype section regarding the Gibson filter.
 
 The script started out as a simple bgrep command followed by a dd to perform the replacement, but I had Claude fill it in with useful options.  See the script for usage, but basically, the simplest invocation of it is to close all chromium based browsers, then run (without parameters) with sudo or as root to patch them.  This will of course need to be run every time the browser(s) is updated.  I found the original script to do this online, perhaps over 10 years ago, but I can't find it anymore to give credit to the original author for the concept and execution.
 
@@ -56,18 +82,7 @@ In Stylebot options, you would add a new style, and apply it either globally, wi
 Notably, since this is done in CSS, you can use this on *any* platform, including Windows, to smooth out some pretty rough text that happens by default.
 
 
-## Freetype
-
-https://copr.fedorainfracloud.org/coprs/infinality/freetype/
-
-Freetype with patches and settings I like:
-
-- Bytecode Interpreter enabled
-- No emboldening in the vertical direction when emboldening is requested
-- LCD Filter Patch
-    - Gibson LCD filter instead of default LCD filter
-    - Extra Smooth LCD filter instead of light LCD filter
-- Grayscale FIR filter similar to the LCD filter but for grayscale
+## Freetype Patch Details
 
 ### LCD Filter Patch
 
@@ -261,6 +276,30 @@ Grayscale filter weights that will be used **at or below** the specified point s
 #### FREETYPE_GRAY_FILTER_WEIGHTS_FINAL
 
 Grayscale filter weights that will be used **above** the specified point size in the ftsmooth.c render path.  The values should typically add up to 0x100 or 256 in decimal, but don't have to if you want to add or remove weight.  Typically the first and last values should remain at 00.  The weights specified for this are always used in the ftoutln.c path.
+
+
+## qt6-qtbase Patch Details
+
+This patches qt6-qtbase to fix unhinted text (ignoring fontconfig rules) on fractional desktop scales (125%, 150%, 175%, etc.) that has been present for years, noticeable on KDE Plasma applications that use Qt.  Basically, it makes Qt applications respect the fontconfig hinting settings again instead of forcing everything to unhinted, which is very blurry at smaller point sizes.  The patch was developed with ChatGPT's help and is available in the qt6-qtbase directory.
+
+The following is a lightly edited explanation of the patch's behavior by ChatGPT.
+
+======
+
+The corrected behavior is enabled by default. To restore stock Qt behavior:
+
+```
+QT_DISABLE_DPR_FONT_HINTING=1 kwrite
+```
+
+With the variable unset or set to 0, the patch does three things.
+
+First, Qt no longer automatically replaces fontconfig's hint style with `HintNone` merely because DPR scaling exists. Stock Qt currently does exactly that in `defaultHintStyleFromMatch()`.
+
+Second, for scalable fonts in an application with a scaled screen, Qt uses design/fractional horizontal metrics. This fixes glyph spacing issues. Stock Qt otherwise uses hinted metrics for `HintMedium`/`HintFull`.
+
+Third, horizontal subpixel glyph positioning is enabled for that DPR-hinting path, while **vertical subpixel positioning remains stock**. Stock Qt normally permits horizontal fractional positioning only for `HintLight` and `HintNone`.
+
 
 
 

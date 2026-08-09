@@ -1,0 +1,124 @@
+diff --git a/src/gui/text/freetype/qfontengine_ft.cpp b/src/gui/text/freetype/qfontengine_ft.cpp
+--- a/src/gui/text/freetype/qfontengine_ft.cpp
++++ b/src/gui/text/freetype/qfontengine_ft.cpp
+@@ -2499,11 +2499,22 @@
+     return mappedGlyphs;
+ }
+ 
++bool QFontEngineFT::dprFontHintingActive() const
++{
++    static const bool enabled =
++            qEnvironmentVariableIntValue("QT_DISABLE_DPR_FONT_HINTING") <= 0;
++    return enabled && FT_IS_SCALABLE(freetype->face);
++}
++
++
+ bool QFontEngineFT::shouldUseDesignMetrics(QFontEngine::ShaperFlags flags) const
+ {
+     if (!FT_IS_SCALABLE(freetype->face))
+         return false;
+ 
++    if (dprFontHintingActive())
++        return true;
++
+     return default_hint_style == HintNone || default_hint_style == HintLight || (flags & DesignMetrics);
+ }
+ 
+@@ -2786,6 +2797,13 @@
+         && qFuzzyCompare(t.m11()*t.m22() - t.m12()*t.m21(), qreal(1.0));
+ }
+ 
++static bool isUniformPositiveScale(const QTransform &t)
++{
++    return t.type() == QTransform::TxScale
++            && t.m11() > 0
++            && qFuzzyCompare(t.m11(), t.m22());
++}
++
+ QFontEngineFT::Glyph *QFontEngineFT::loadGlyphFor(glyph_t g,
+                                                   const QFixedPoint &subPixelPosition,
+                                                   GlyphFormat format,
+@@ -2801,15 +2819,40 @@
+     Glyph *glyph = glyphSet != nullptr ? glyphSet->getGlyph(g, subPixelPosition) : nullptr;
+     if (!glyph || glyph->format != format || (!fetchBoundingBox && !glyph->data)) {
+         QScopedValueRollback<HintStyle> saved_default_hint_style(default_hint_style);
+-        if (t.type() >= QTransform::TxScale && !is2dRotation(t))
++        const bool useDprHinting = dprFontHintingActive()
++                && default_hint_style != HintNone
++                && isUniformPositiveScale(t);
++        if (t.type() >= QTransform::TxScale && !is2dRotation(t) && !useDprHinting)
+             default_hint_style = HintNone; // disable hinting if the glyphs are transformed
+ 
+-        lockFace();
++        FT_Face face = lockFace();
+         FT_Matrix m = this->matrix;
+         FT_Matrix ftMatrix = glyphSet != nullptr ? glyphSet->transformationMatrix : QTransformToFTMatrix(t);
++        bool restoreLogicalSize = false;
++        if (useDprHinting) {
++            const int deviceXSize = qRound(xsize * t.m11());
++            const int deviceYSize = qRound(ysize * t.m22());
++            if (FT_Set_Char_Size(face, deviceXSize, deviceYSize, 0, 0) == FT_Err_Ok) {
++                // Hint at the physical target ppem. The DPR must not also be
++                // applied later through FT_Set_Transform.
++                ftMatrix.xx = 0x10000L;
++                ftMatrix.yy = 0x10000L;
++                ftMatrix.xy = 0;
++                ftMatrix.yx = 0;
++                restoreLogicalSize = true;
++            } else {
++                // Fall back to Qt's previous transformed-glyph behavior if the
++                // physical FreeType size cannot be selected.
++                default_hint_style = HintNone;
++            }
++        }
++
+         FT_Matrix_Multiply(&ftMatrix, &m);
+         freetype->matrix = m;
+         glyph = loadGlyph(glyphSet, g, subPixelPosition, color, format, false, disableOutlineDrawing);
++
++        if (restoreLogicalSize)
++            FT_Set_Char_Size(face, xsize, ysize, 0, 0);
+         unlockFace();
+     }
+ 
+diff --git a/src/gui/text/freetype/qfontengine_ft_p.h b/src/gui/text/freetype/qfontengine_ft_p.h
+--- a/src/gui/text/freetype/qfontengine_ft_p.h
++++ b/src/gui/text/freetype/qfontengine_ft_p.h
+@@ -167,15 +167,18 @@
+     QFontEngine::FaceId faceId() const override;
+     QFontEngine::Properties properties() const override;
+     QFixed emSquareSize() const override;
++    bool dprFontHintingActive() const;
+     bool supportsHorizontalSubPixelPositions() const override
+     {
+-        return default_hint_style == HintLight ||
+-               default_hint_style == HintNone;
++        return dprFontHintingActive()
++                || default_hint_style == HintLight
++                || default_hint_style == HintNone;
+     }
+ 
+     bool supportsVerticalSubPixelPositions() const override
+     {
+-        return supportsHorizontalSubPixelPositions();
++        return default_hint_style == HintLight
++                || default_hint_style == HintNone;
+     }
+ 
+     bool getSfntTableData(uint tag, uchar *buffer, uint *length) const override;
+diff --git a/src/gui/text/unix/qfontconfigdatabase.cpp b/src/gui/text/unix/qfontconfigdatabase.cpp
+--- a/src/gui/text/unix/qfontconfigdatabase.cpp
++++ b/src/gui/text/unix/qfontconfigdatabase.cpp
+@@ -706,7 +706,11 @@
+         break;
+     }
+ 
+-    if (isDprScaling())
++    // Keep text layout in logical coordinates while allowing the FreeType
++    // backend to hint glyph outlines at the physical target ppem.
++    static const bool disableDprFontHinting =
++            qEnvironmentVariableIntValue("QT_DISABLE_DPR_FONT_HINTING") > 0;
++    if (isDprScaling() && disableDprFontHinting)
+         return QFontEngine::HintNone;
+ 
+     void *hintStyleResource =
