@@ -1,5 +1,5 @@
 # custom-packages
-Customized packages, patches and tweaks for Fedora and RHEL variants, with an emphasis on making font rendering look better.
+Customized packages for Fedora and RHEL variants, along with their distro-agnostic patches and tweaks, with an emphasis on making font rendering look better on Linux systems.
 
 
 
@@ -7,14 +7,14 @@ Customized packages, patches and tweaks for Fedora and RHEL variants, with an em
 
 https://copr.fedorainfracloud.org/coprs/infinality/bgrep/
 
-Binary grep utility that returns locations of matching hex values.  This is simply a Fedora package of upstream:  https://github.com/tmbinc/bgrep
+Binary grep utility that returns locations of matching hex values, used as a dependency below.  This is simply a Fedora package of upstream:  https://github.com/tmbinc/bgrep
 
 
 ## Better Blur DX
 
 https://copr.fedorainfracloud.org/coprs/infinality/kwin-effects-better-blur-dx/
 
-This kwin effect allows additional customization of the blur parameters.  This is simply a Fedora package of upstream:   https://github.com/xarblu/kwin-effects-better-blur-dx
+This kwin effect allows additional customization of the blur parameters used on transparent windows.  This is simply a Fedora package of upstream:   https://github.com/xarblu/kwin-effects-better-blur-dx
 
 
 ## Fontforge
@@ -28,7 +28,7 @@ This is a build of Fontforge that has Truetype debugging enabled, but is otherwi
 
 https://copr.fedorainfracloud.org/coprs/infinality/qt6-qtbase/
 
-This is a custom build of qt6-qtbase that applies a patch to fix unhinted text (ignoring fontconfig rules) on fractional desktop scales (125%, 150%, 175%, etc.) that has been present for years, noticeable on KDE Plasma applications that use Qt (e.g. kwrite, konsole, kate, etc.).  Basically, it makes Qt applications respect the fontconfig hinting settings again instead of forcing everything to unhinted, which is very blurry at smaller point sizes.  It is otherwise identical to the stock fedora package.  The patch was developed with ChatGPT's help and is available in the qt6-qtbase directory.
+This is a custom build of qt6-qtbase that applies a patch to fix unhinted text (ignoring fontconfig rules) on DPR/desktop scales other than 100% (125%, 150%, 175%, 200%, etc.) that has been present for years, noticeable on KDE Plasma applications that use Qt (e.g. kwrite, konsole, kate, etc.).  Basically, it makes Qt applications respect the fontconfig hinting settings again instead of forcing everything to become unhinted, which is blurry at smaller point sizes and inconsistent with other applications.  It is otherwise identical to the stock fedora package.  The patch was developed with ChatGPT's help and is available in the qt6-qtbase directory.
 
 See **qt6-qtbase Patch Details** section below.
 
@@ -42,9 +42,9 @@ Freetype with patches and settings I like:
 - Bytecode Interpreter enabled
 - No emboldening in the vertical direction when emboldening is requested
 - LCD Filter Patch
-    - Gibson LCD filter instead of default LCD filter
+    - Smooth (Gibson) LCD filter instead of default LCD filter
     - Extra Smooth LCD filter instead of light LCD filter
-- Grayscale FIR filter similar to the LCD filter but for grayscale
+- Grayscale FIR filter similar to the LCD filter but for grayscale text
 
 See **Freetype Patch Details** section below.
 
@@ -75,7 +75,7 @@ body {
 ```
 
 
-The percentages in the text-shadow can be adjusted up and down for a stronger or lighter effect, with 7.5% / 97.5% being the best middle point of the tradeoffs.
+The percentages in the text-shadow can be adjusted up and down for a stronger or lighter effect, with 7.5% / 97.5% being the best middle point of the tradeoffs.  The left & right offset of 0.666667px matches 150% desktop scaling, so should likely be adjusted depending on your scale:  `100 / [your scale]`
 
 In Stylebot options, you would add a new style, and apply it either globally, with  `*` (not recommended unless using `--disable-lcd-text` which globally disables subpixel rendering), or on a per-site basis with specific domains like this:  `gemini.google.com, chatgpt.com, github.com, teams.cloud.microsoft, *.elastic.co`.  You can also create additional rules, using stronger or lighter values, to apply to other sites that need different amounts of smoothing.  One drawback here is that there is no way to differentiate between LCD and grayscale text;  it applies to the site and element(s) you choose, regardless.  But often, for sites imapacted by grayscale text, most of the site needs treatment, and the spots that don't, which use subpixel rendering, are an acceptable sacrifice to unnecessarily smooth further.
 
@@ -88,7 +88,7 @@ Notably, since this is done in CSS, you can use this on *any* platform, includin
 
 The patch overrides the default and light filters with a smooth and extra smooth filter, and allows configuration of these values with environment variables.  Available in the freetype directory.
 
-#### Gibson LCD Filter
+#### Smooth (Gibson) LCD Filter
 
 By default, the Gibson filter replaces the default LCD filter in ftlcdfil.c with one that spreads the intensities more broadly across subpixels, resulting in a smoother, less "color fringey", and more uniform appearance.
 
@@ -123,7 +123,7 @@ This can be leveraged in fontconfig rules this way:
 These values can be controlled with environment variables
 
 ```
-export FREETYPE_LCD_FILTER_WEIGHTS_DEFAULT=1c,38,56,38,1c
+export FREETYPE_LCD_FILTER_WEIGHTS_DEFAULT=1C,38,56,38,1C
 export FREETYPE_LCD_FILTER_WEIGHTS_LIGHT=00,1D,C6,1D,00
 ```
 
@@ -135,7 +135,7 @@ Very Sharp:  00,55,56,55,00    (Freetype "light" filtering)
 Sharp:       04,51,56,51,04
 Medium:      08,4D,56,4D,08    (Freetype "default" filtering)
 Smooth:      10,45,56,45,10
-Smooth:      1c,38,56,38,1c    (Gibson filter)
+Smooth:      1C,38,56,38,1C    (Gibson filter)
 Very Smooth: 20,38,49,38,20    (Extra Smooth filter)
 Maximum:     33,33,33,33,33    (For reference - Fully distributed)
 ```
@@ -145,7 +145,6 @@ Maximum:     33,33,33,33,33    (For reference - Fully distributed)
 Environment variable that controls the LCD filter values for freetype's "default" filter.  Leveraged in fontconfig like this:
 
 ```
-  <!-- lcddefault, lcdlight, lcdnone, lcdlegacy -->
   <edit mode="assign" name="lcdfilter">
    <const>lcddefault</const>
   </edit>
@@ -156,7 +155,6 @@ Environment variable that controls the LCD filter values for freetype's "default
 Environment variable that controls the LCD filter values for freetype's "light" filter.  Leveraged in fontconfig like this:
 
 ```
-  <!-- lcddefault, lcdlight, lcdnone, lcdlegacy -->
   <edit mode="assign" name="lcdfilter">
    <const>lcdlight</const>
   </edit>
@@ -172,7 +170,7 @@ unset FREETYPE_LCD_FILTER_WEIGHTS_LIGHT
 you get the patched defaults:
 
 ```
-DEFAULT = 1c,38,56,38,1c
+DEFAULT = 1C,38,56,38,1C
 LIGHT   = 20,38,49,38,20
 ```
 
@@ -280,7 +278,7 @@ Grayscale filter weights that will be used **above** the specified point size in
 
 ## qt6-qtbase Patch Details
 
-This patches qt6-qtbase to fix unhinted text (ignoring fontconfig rules) on anything except 1x scaling, like fractional desktop scales (125%, 150%, 175%, etc.) that has been present for years, noticeable on KDE Plasma applications that use Qt.  Basically, it makes Qt applications respect the fontconfig hinting settings again instead of forcing everything to unhinted, which is very blurry at smaller point sizes.  The patch was developed with ChatGPT's help and is available in the qt6-qtbase directory.
+This patches qt6-qtbase to fix unhinted text (ignoring fontconfig rules) on anything except 1x scaling, like fractional desktop scales (125%, 150%, 175%, etc.) that has been present for years, noticeable on KDE Plasma applications that use Qt.  Basically, it makes Qt applications respect the fontconfig hinting settings again instead of forcing everything to become unhinted, which is blurry at smaller point sizes and inconsistent with other applications.  The patch was developed with ChatGPT's help and is available in the qt6-qtbase directory.
 
 The following is a lightly edited explanation of the patch's behavior by ChatGPT.
 
