@@ -344,7 +344,10 @@ Notably, this does not fix all Plasma UI rendering, which uses Qt Quick in many 
 QT_QUICK_BACKEND=software
 ```
 
-The following is a lightly edited explanation of the patch's behavior by ChatGPT.
+The patch + this workaround fixes font rendering throughout KDE, making it respect fontconfig settings.
+
+
+The following is a lightly edited explanation of the patch's behavior by ChatGPT:
 
 ======
 
