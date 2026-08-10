@@ -280,6 +280,12 @@ Grayscale filter weights that will be used **above** the specified point size in
 
 This patches qt6-qtbase to fix unhinted text (ignoring fontconfig rules) on anything except 1x scaling, like fractional desktop scales (125%, 150%, 175%, etc.) that has been present for years, noticeable on KDE Plasma applications that use Qt.  Basically, it makes Qt applications respect the fontconfig hinting settings again instead of forcing everything to become unhinted, which is blurry at smaller point sizes and inconsistent with other applications.  The patch was developed with ChatGPT's help and is available in the qt6-qtbase directory.
 
+Notably, this does not fix all Plasma UI rendering, which uses Qt Quick in many places.  I'm working on a patch for that, but there is a quick workaround that fixes the UI fonts when using this patch, which can be set globally in /etc/environment:
+
+```
+QT_QUICK_BACKEND=software
+```
+
 The following is a lightly edited explanation of the patch's behavior by ChatGPT.
 
 ======
