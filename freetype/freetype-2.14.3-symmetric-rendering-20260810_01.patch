@@ -1,0 +1,239 @@
+--- a/include/freetype/ftdriver.h	2026-03-11 11:35:37.000000000 -0500
++++ b/include/freetype/ftdriver.h	2026-08-10 14:26:02.621339706 -0500
+@@ -214,9 +214,9 @@
+    *   itself, it is possible to control its behaviour with @FT_Property_Set
+    *   and @FT_Property_Get.
+    *
+-   *   The TrueType driver's module name is 'truetype'; a single property
+-   *   @interpreter-version is available, as documented in the @properties
+-   *   section.
++   *   The TrueType driver's module name is 'truetype'; the properties
++   *   @interpreter-version and @symmetric-rendering are available, as
++   *   documented in the @properties section.
+    *
+    *   To help understand the differences between interpreter versions, we
+    *   introduce a list of definitions, kindly provided by Greg Hitchcock.
+@@ -817,6 +817,79 @@
+    *   2.5
+    */
+ 
++  /**************************************************************************
++   *
++   * @enum:
++   *   TT_SYMMETRIC_RENDERING_XXX
++   *
++   * @description:
++   *   A list of constants used for the @symmetric-rendering property to
++   *   control the ClearType symmetric-rendering state returned by the
++   *   TrueType `GETINFO` bytecode instruction.
++   *
++   * @values:
++   *   TT_SYMMETRIC_RENDERING_OFF ::
++   *     Don't report symmetric rendering.
++   *
++   *   TT_SYMMETRIC_RENDERING_ON ::
++   *     Report symmetric rendering for non-monochrome rendering modes.
++   *     This corresponds to FreeType's traditional behaviour.
++   *
++   *   TT_SYMMETRIC_RENDERING_AUTO ::
++   *     Use the current PPEM and the font's version~1 `gasp` symmetric
++   *     flags.  Symmetric rendering is not reported if the font requests
++   *     symmetric grid fitting without symmetric smoothing.  In all
++   *     other cases, use the traditional FreeType behaviour.
++   */
++#define TT_SYMMETRIC_RENDERING_OFF   0
++#define TT_SYMMETRIC_RENDERING_ON    1
++#define TT_SYMMETRIC_RENDERING_AUTO  2
++
++
++  /**************************************************************************
++   *
++   * @property:
++   *   symmetric-rendering
++   *
++   * @description:
++   *   Controls whether TrueType interpreter version~40 reports ClearType
++   *   symmetric rendering through result bit~18 of the `GETINFO`
++   *   instruction.
++   *
++   *   The default value is @TT_SYMMETRIC_RENDERING_ON, preserving
++   *   FreeType's existing behaviour.
++   *
++   *   @TT_SYMMETRIC_RENDERING_AUTO uses the version~1 `gasp` table at
++   *   the current vertical PPEM.  If
++   *   @FT_GASP_SYMMETRIC_GRIDFIT is set while
++   *   @FT_GASP_SYMMETRIC_SMOOTHING is clear, symmetric rendering is not
++   *   reported.  If there is no `gasp` table, the table doesn't provide
++   *   the symmetric flags, or symmetric smoothing is requested,
++   *   FreeType's traditional behaviour is retained.
++   *
++   * @note:
++   *   This property affects the rasterizer state reported to TrueType
++   *   bytecode.  It does not itself select a rasterizer or rendering
++   *   mode.
++   *
++   *   The property can be used with @FT_Property_Get also.
++   *
++   *   It can be set with the `FREETYPE_PROPERTIES` environment variable,
++   *   using values~0, 1, or~2.
++   *
++   * @example:
++   *   ```
++   *     FT_Library  library;
++   *     FT_UInt     symmetric_rendering = TT_SYMMETRIC_RENDERING_AUTO;
++   *
++   *
++   *     FT_Init_FreeType( &library );
++   *
++   *     FT_Property_Set( library, "truetype",
++   *                              "symmetric-rendering",
++   *                              &symmetric_rendering );
++   *   ```
++   */
+ 
+   /**************************************************************************
+    *
+diff -ru freetype-2.14.3/src/truetype/ttdriver.c freetype-2.14.3-symmetric-rendering/src/truetype/ttdriver.c
+--- a/src/truetype/ttdriver.c	2026-03-11 11:35:37.000000000 -0500
++++ b/src/truetype/ttdriver.c	2026-08-10 14:30:48.559321523 -0500
+@@ -113,6 +113,42 @@
+       return error;
+     }
+ 
++    if ( !ft_strcmp( property_name, "symmetric-rendering" ) )
++    {
++      FT_UInt  symmetric_rendering;
++
++      #ifdef FT_CONFIG_OPTION_ENVIRONMENT_PROPERTIES
++      if ( value_is_string )
++      {
++        const char*  s = (const char*)value;
++
++
++        symmetric_rendering = (FT_UInt)ft_strtol( s, NULL, 10 );
++      }
++      else
++        #endif
++      {
++        FT_UInt*  sr = (FT_UInt*)value;
++
++
++        symmetric_rendering = *sr;
++      }
++
++      switch ( symmetric_rendering )
++      {
++        case TT_SYMMETRIC_RENDERING_OFF:
++        case TT_SYMMETRIC_RENDERING_ON:
++        case TT_SYMMETRIC_RENDERING_AUTO:
++          driver->symmetric_rendering = symmetric_rendering;
++          break;
++
++        default:
++          error = FT_ERR( Invalid_Argument );
++      }
++
++      return error;
++    }
++
+     FT_TRACE2(( "tt_property_set: missing property `%s'\n",
+                 property_name ));
+     return FT_THROW( Missing_Property );
+@@ -139,6 +175,16 @@
+ 
+       return error;
+     }
++
++    if ( !ft_strcmp( property_name, "symmetric-rendering" ) )
++    {
++      FT_UInt*  val = (FT_UInt*)value;
++
++
++      *val = driver->symmetric_rendering;
++
++      return error;
++    }
+ 
+     FT_TRACE2(( "tt_property_get: missing property `%s'\n",
+                 property_name ));
+diff -ru freetype-2.14.3/src/truetype/ttinterp.c freetype-2.14.3-symmetric-rendering/src/truetype/ttinterp.c
+--- a/src/truetype/ttinterp.c	2026-03-11 11:35:37.000000000 -0500
++++ b/src/truetype/ttinterp.c	2026-08-10 14:34:47.081786797 -0500
+@@ -26,6 +26,7 @@
+ #include <freetype/ftsystem.h>
+ #include <freetype/ftdriver.h>
+ #include <freetype/ftmm.h>
++#include <freetype/ftgasp.h>
+ 
+ #ifdef TT_USE_BYTECODE_INTERPRETER
+ 
+@@ -6483,6 +6484,10 @@
+                FT_Long*        args )
+   {
+     FT_Long    K;
++#ifdef TT_SUPPORT_SUBPIXEL_HINTING_MINIMAL
++    FT_Int     gasp_flags;
++    FT_Bool    symmetric_rendering;
++#endif
+     TT_Driver  driver = (TT_Driver)FT_FACE_DRIVER( exc->face );
+ 
+ 
+@@ -6566,11 +6571,32 @@
+        * Selector Bit:  11
+        * Return Bit(s): 18
+        *
+-       * The only smoothing method FreeType supports unless someone sets
+-       * FT_LOAD_TARGET_MONO.
++       * By default, retain FreeType's traditional behaviour and report
++       * symmetric rendering for non-monochrome modes.  In automatic
++       * mode, also consider the font's version 1 `gasp` flags at the
++       * current vertical PPEM.
+        */
+       if ( ( args[0] & 2048 ) != 0 && exc->mode != FT_RENDER_MODE_MONO )
+-        K |= 1 << 18;
++      {
++        symmetric_rendering = TRUE;
++
++        if ( driver->symmetric_rendering == TT_SYMMETRIC_RENDERING_OFF )
++          symmetric_rendering = FALSE;
++        else if ( driver->symmetric_rendering ==
++          TT_SYMMETRIC_RENDERING_AUTO )
++        {
++          gasp_flags = FT_Get_Gasp( (FT_Face)exc->face,
++                                    exc->metrics.y_ppem );
++
++          if ( gasp_flags != FT_GASP_NO_TABLE               &&
++            ( gasp_flags & FT_GASP_SYMMETRIC_GRIDFIT )      &&
++            !( gasp_flags & FT_GASP_SYMMETRIC_SMOOTHING ) )
++            symmetric_rendering = FALSE;
++        }
++
++        if ( symmetric_rendering )
++          K |= 1 << 18;
++      }
+ 
+       /*********************************
+        * CLEARTYPE HINTING AND
+diff -ru freetype-2.14.3/src/truetype/ttobjs.c freetype-2.14.3-symmetric-rendering/src/truetype/ttobjs.c
+--- a/src/truetype/ttobjs.c	2026-03-11 11:35:37.000000000 -0500
++++ b/src/truetype/ttobjs.c	2026-08-10 14:27:28.573081377 -0500
+@@ -1324,6 +1324,8 @@
+     driver->interpreter_version = TT_INTERPRETER_VERSION_40;
+ #endif
+ 
++    driver->symmetric_rendering = TT_SYMMETRIC_RENDERING_AUTO;
++
+ #else /* !TT_USE_BYTECODE_INTERPRETER */
+ 
+     FT_UNUSED( ttdriver );
+diff -ru freetype-2.14.3/src/truetype/ttobjs.h freetype-2.14.3-symmetric-rendering/src/truetype/ttobjs.h
+--- a/src/truetype/ttobjs.h	2026-03-11 11:35:37.000000000 -0500
++++ b/src/truetype/ttobjs.h	2026-08-10 14:26:52.708649448 -0500
+@@ -247,6 +247,7 @@
+     TT_GlyphZoneRec  zone;     /* glyph loader points zone */
+ 
+     FT_UInt  interpreter_version;
++    FT_UInt  symmetric_rendering;
+ 
+   } TT_DriverRec;
+ 
