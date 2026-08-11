@@ -1,0 +1,37 @@
+--- a/src/truetype/ttinterp.c     2026-03-11 11:35:37.000000000 -0500
++++ b/src/truetype/ttinterp.c      2026-08-11 09:51:37.043646513 -0500
+@@ -25,6 +25,7 @@
+ #include <freetype/fttrigon.h>
+ #include <freetype/ftsystem.h>
+ #include <freetype/ftdriver.h>
++#include <freetype/ftgasp.h>
+ #include <freetype/ftmm.h>
+ 
+ #ifdef TT_USE_BYTECODE_INTERPRETER
+@@ -6566,11 +6567,23 @@
+        * Selector Bit:  11
+        * Return Bit(s): 18
+        *
+-       * The only smoothing method FreeType supports unless someone sets
+-       * FT_LOAD_TARGET_MONO.
++       * Respect the font's version 1 `gasp` settings at the current PPEM.
++       * Suppress symmetric rendering when the font requests symmetric
++       * grid fitting without symmetric smoothing.
+        */
+       if ( ( args[0] & 2048 ) != 0 && exc->mode != FT_RENDER_MODE_MONO )
+-        K |= 1 << 18;
++      {
++        FT_Int  gasp_flags;
++
++
++        gasp_flags = FT_Get_Gasp( (FT_Face)exc->face,
++                                  exc->metrics.y_ppem );
++
++        if ( gasp_flags == FT_GASP_NO_TABLE               ||
++          !( gasp_flags & FT_GASP_SYMMETRIC_GRIDFIT )     ||
++          ( gasp_flags & FT_GASP_SYMMETRIC_SMOOTHING ) )
++          K |= 1 << 18;
++      }
+ 
+       /*********************************
+        * CLEARTYPE HINTING AND
