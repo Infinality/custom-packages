@@ -287,6 +287,8 @@ The patch was developed with the help of ChatGPT and is available in the freetyp
 
 This patch decouples suppressing coarse X moves from backward compatibility mode for Cleartype rendering.  This has the effect of fixing warped glyphs in fonts like Corbel and Malgun Gothic (and potentially others).
 
+The patch was developed with the help of ChatGPT and is available in the freetype directory.
+
 
 ## qt6-qtbase Patch Details
 
