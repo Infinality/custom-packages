@@ -46,6 +46,7 @@ Freetype with patches and settings I like:
     - Extra Smooth LCD filter instead of light LCD filter
 - Grayscale FIR filter similar to the LCD filter but for grayscale text
 - Symmetric Rendering Patch
+- Suppress Coarse X Moves Patch
 
 See **Freetype Patch Details** section below.
 
@@ -278,9 +279,13 @@ Grayscale filter weights that will be used **above** the specified point size in
 
 ### Symmetric Rendering Patch
 
-Freetype normally always honors the GETINFO selector for symmetric smoothing as long as the rendering mode isn't FT_LOAD_TARGET_MONO.  This patch enriches the behavior to inspect the font's gasp table to check ppem sizes and smoothing settings to respect the font's stated support and enables it when appropriate.  This has the effect of fixing the grid-fitting behavior of Microsoft fonts at certain smaller point sizes, making it render glyph shapes more like DirectWrite does on Windows.
+Freetype normally always honors the GETINFO selector for Cleartype symmetric smoothing as long as the rendering mode isn't FT_LOAD_TARGET_MONO.  This patch enriches the behavior to inspect the font's gasp table to check ppem sizes and smoothing settings to respect the font's stated support and enables it when appropriate.  This has the effect of fixing the grid-fitting behavior of Microsoft fonts at certain smaller point sizes, making it render glyph shapes more like DirectWrite does on Windows.
 
 The patch was developed with the help of ChatGPT and is available in the freetype directory.
+
+### Suppress Coarse X Moves Patch
+
+This patch decouples suppressing coarse X moves from backward compatibility mode for Cleartype rendering.  This has the effect of fixing warped glyphs in fonts like Corbel and Malgun Gothic (and potentially others).
 
 
 ## qt6-qtbase Patch Details
