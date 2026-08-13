@@ -283,13 +283,6 @@ Freetype normally always honors the GETINFO selector for Cleartype symmetric smo
 
 The patch was developed with the help of ChatGPT and is available in the freetype directory.
 
-### Suppress Coarse X Moves Patch
-
-This patch decouples suppressing coarse X moves from backward compatibility mode for Cleartype rendering.  This has the effect of fixing warped glyphs in fonts like Corbel and Malgun Gothic (and potentially others).
-
-The patch was developed with the help of ChatGPT and is available in the freetype directory.
-
-
 ## qt6-qtbase Patch Details
 
 This patches qt6-qtbase to fix unhinted text (ignoring fontconfig rules) on anything except 1x scaling, like fractional desktop scales (125%, 150%, 175%, etc.) that has been present for years, noticeable on KDE Plasma applications that use Qt.  Basically, it makes Qt applications respect the fontconfig hinting settings again instead of forcing everything to become unhinted, which is blurry at smaller point sizes and inconsistent with other applications.  The patch was developed with ChatGPT's help and is available in the qt6-qtbase directory.
