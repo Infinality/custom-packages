@@ -2,6 +2,33 @@
 Customized packages for Fedora and RHEL variants, along with their distro-agnostic patches and tweaks, with an emphasis on making font rendering look better on Linux systems.
 
 
+## Freetype
+
+https://copr.fedorainfracloud.org/coprs/infinality/freetype/
+
+Freetype with patches and settings I like:
+
+- Bytecode Interpreter enabled
+- No emboldening in the vertical direction when emboldening is requested
+- LCD Filter Patch
+    - Smooth (Gibson) LCD filter instead of default LCD filter
+    - Extra Smooth LCD filter instead of light LCD filter
+- Grayscale FIR filter similar to the LCD filter but for grayscale text
+- Use native TrueType v40 hinting for LIGHT target (normally freetype forces autohint for light hinting requests)
+- Fedora COPR build also builds ftinspect for freetype-demos, which is notably missing in stock fedora freetype-demos
+- Merged patches for freetype 2.15.0:
+    - Honor gasp policy for symmetric smoothing and gridfit (Fixes Segoe UI and others at certain ppem)
+    - Fix rendering of 'native' cleartype fonts (e.g. Corbel, Constantia, Simsun, and others)
+
+See **Freetype Patch Details** section below.
+
+
+## touche
+
+https://copr.fedorainfracloud.org/coprs/infinality/touche/
+
+The desktop application to configure Touchégg.  This is simply a Fedora package of upstream:  https://github.com/JoseExposito/touche
+
 
 ## bgrep
 
@@ -31,27 +58,6 @@ https://copr.fedorainfracloud.org/coprs/infinality/qt6-qtbase/
 This is a custom build of qt6-qtbase that applies a patch to fix unhinted text (ignoring fontconfig rules) on DPR/desktop scales other than 100% (125%, 150%, 175%, 200%, etc.) that has been present for years, noticeable on KDE Plasma applications that use Qt (e.g. kwrite, konsole, kate, etc.).  Basically, it makes Qt applications respect the fontconfig hinting settings again instead of forcing everything to become unhinted, which is blurry at smaller point sizes and inconsistent with other applications.  It is otherwise identical to the stock fedora package.  The patch was developed with ChatGPT's help and is available in the qt6-qtbase directory.
 
 See **qt6-qtbase Patch Details** section below.
-
-
-## Freetype
-
-https://copr.fedorainfracloud.org/coprs/infinality/freetype/
-
-Freetype with patches and settings I like:
-
-- Bytecode Interpreter enabled
-- No emboldening in the vertical direction when emboldening is requested
-- LCD Filter Patch
-    - Smooth (Gibson) LCD filter instead of default LCD filter
-    - Extra Smooth LCD filter instead of light LCD filter
-- Grayscale FIR filter similar to the LCD filter but for grayscale text
-- Symmetric Rendering Patch
-- Fedora COPR build also builds ftinspect for freetype-demos, which is notably missing in stock fedora freetype-demos
-- Merged patches for freetype 2.15.0:
-    - Honor gasp policy for symmetric smoothing and gridfit (Fixes Segoe UI and others at certain ppem)
-    - Fix rendering of 'native' cleartype fonts (e.g. Corbel, Constantia, Simsun, and others)
-
-See **Freetype Patch Details** section below.
 
 
 ## Chromium Based Browsers
