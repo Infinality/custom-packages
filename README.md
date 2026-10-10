@@ -46,7 +46,10 @@ Freetype with patches and settings I like:
     - Extra Smooth LCD filter instead of light LCD filter
 - Grayscale FIR filter similar to the LCD filter but for grayscale text
 - Symmetric Rendering Patch
-- Suppress Coarse X Moves Patch
+- Fedora COPR build also builds ftinspect for freetype-demos, which is notably missing in stock fedora freetype-demos
+- Merged patches for freetype 2.15.0:
+    - Honor gasp policy for symmetric smoothing and gridfit (Fixes Segoe UI and others at certain ppem)
+    - Fix rendering of 'native' cleartype fonts (e.g. Corbel, Constantia, Simsun, and others)
 
 See **Freetype Patch Details** section below.
 
