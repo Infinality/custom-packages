@@ -95,6 +95,10 @@ Notably, since this is done in CSS, you can use this on *any* platform, includin
 
 ## Freetype Patch Details
 
+### Use native TrueType v40 hinting for LIGHT target
+
+See Merge Request for description:  https://gitlab.freedesktop.org/freetype/freetype/-/merge_requests/450
+
 ### LCD Filter Patch
 
 The patch overrides the default and light filters with a smooth and extra smooth filter, and allows configuration of these values with environment variables.  Available in the freetype directory.
