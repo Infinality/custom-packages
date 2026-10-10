@@ -228,7 +228,7 @@ Of particular note is the Grayscale FIR Filter, available in the freetype direct
 
 Unfortunately, the place you most often encounter grayscale text is in chromium-based browsers and electron apps, due to chromium's aggressive reduction to grayscale during compositing steps, and since chromium brought most font rendering into its codebase, this patch will have no effect for such applications.  The difference *can* be seen desktop applications that use freetype directly, like firefox, thunderbird, gtk and Qt apps, and calibre, which renders its reader text in grayscale (via qtwebengine) and can't be changed to use subpixel rendering through flags, settings, or environment variables.  Firefox and Thunderbird still have instances where text is rendered in grayscale though, even when subpixel rendering is set in about:config.
 
-It's implemented as a 5-tap filter, but practically, only 3 would ever be needed.  It's also implemented in 2 rendering paths:
+It's implemented as a 3-tap filter.  It's also implemented in 2 rendering paths:
  - ftsmooth.c (impacts firefox, thunderbird, gtk)
  - ftoutln.c (qtwebengine, others)
 
@@ -237,8 +237,8 @@ It's enabled by default with the values specified below but can be adjusted with
 ```
 export FREETYPE_GRAY_FILTER=1
 export FREETYPE_GRAY_FILTER_PPEM=22
-export FREETYPE_GRAY_FILTER_WEIGHTS=00,10,E0,10,00
-export FREETYPE_GRAY_FILTER_WEIGHTS_FINAL=00,1D,C6,1D,00
+export FREETYPE_GRAY_FILTER_WEIGHTS=10,E0,10
+export FREETYPE_GRAY_FILTER_WEIGHTS_FINAL=1D,C6,1D
 ```
 
 For serif fonts like EB Garamond in calibre, I found that less aggressive filtering was good at smaller point sizes but not at higher ones, meaning it made sense to add a cutoff point where the filter changes to something stronger.  Serif fonts typically need stronger values than sans serif fonts, and having environment variables lets you customize launchers per-program to suit the need.  Many people would find that setting both FREETYPE_GRAY_FILTER_WEIGHTS and FREETYPE_GRAY_FILTER_WEIGHTS_FINAL to the same value looks just fine, but the variables are there for tweaking.
@@ -246,11 +246,11 @@ For serif fonts like EB Garamond in calibre, I found that less aggressive filter
 Some other values to try:
 
 ```
-Very Light:  00,08,F0,08,00
-Light:       00,10,E0,10,00
-Medium:      00,15,D6,15,00
-Strong:      00,1D,C6,1D,00
-Very Strong: 00,25,B6,25,00
+Very Light:  08,F0,08
+Light:       10,E0,10
+Medium:      15,D6,15
+Strong:      1D,C6,1D
+Very Strong: 25,B6,25
 ```
 
 
@@ -264,8 +264,8 @@ Very Strong: 00,25,B6,25,00
 For the ftsmooth.c rendering path, this controls which filter values are used at particular point sizes.  Setting it to 22 means:
 
 ```
-ppem <= 22  →  00,10,E0,10,00  (FREETYPE_GRAY_FILTER_WEIGHTS)
-ppem >  22  →  00,1D,C6,1D,00  (FREETYPE_GRAY_FILTER_WEIGHTS_FINAL)
+ppem <= 22  →  10,E0,10  (FREETYPE_GRAY_FILTER_WEIGHTS)
+ppem >  22  →  1D,C6,1D  (FREETYPE_GRAY_FILTER_WEIGHTS_FINAL)
 ```
 
 This has no effect in the ftoutln.c path because it doesn't know about glyph ppem.  In that case, the FREETYPE_GRAY_FILTER_WEIGHTS_FINAL is always used.
@@ -280,11 +280,6 @@ Grayscale filter weights that will be used **at or below** the specified point s
 
 Grayscale filter weights that will be used **above** the specified point size in the ftsmooth.c render path.  The values should typically add up to 0x100 or 256 in decimal, but don't have to if you want to add or remove weight.  Typically the first and last values should remain at 00.  The weights specified for this are always used in the ftoutln.c path.
 
-### Symmetric Rendering Patch
-
-Freetype normally always honors the GETINFO selector for Cleartype symmetric smoothing as long as the rendering mode isn't FT_LOAD_TARGET_MONO.  This patch enriches the behavior to inspect the font's gasp table to check ppem sizes and smoothing settings to respect the font's stated support and enables it when appropriate.  This has the effect of fixing the grid-fitting behavior of Microsoft fonts at certain smaller point sizes, making it render glyph shapes more like DirectWrite does on Windows.
-
-The patch was developed with the help of ChatGPT and is available in the freetype directory.
 
 ## qt6-qtbase Patch Details
 

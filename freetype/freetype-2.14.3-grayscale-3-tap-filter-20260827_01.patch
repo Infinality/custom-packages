@@ -9,7 +9,7 @@ diff -ru a/src/base/ftoutln.c b/src/base/ftoutln.c
 +  {
 +    FT_Bool  enabled;
 +
-+    FT_Byte  weights_final[5];
++    FT_Byte  weights_final[3];
 +
 +  } FT_OutlineGrayFilterConfig;
 +
@@ -26,17 +26,17 @@ diff -ru a/src/base/ftoutln.c b/src/base/ftoutln.c
 +
 +
 +  /*
-+   * Parse five hexadecimal byte values.
++   * Parse three hexadecimal byte values.
 +   *
 +   * Accepted examples:
 +   *
-+   *   00,15,D6,15,00
-+   *   0x00:0x15:0xD6:0x15:0x00
-+   *   00 15 D6 15 00
++   *   1D,C6,1D
++   *   0x1D:0xC6:0x1D
++   *   1D C6 1D
 +   */
 +  static FT_Bool
 +  ft_outline_gray_parse_weights( const char*  text,
-+                                 FT_Byte       weights[5] )
++                                 FT_Byte       weights[3] )
 +  {
 +    const char*  p;
 +    char*        end;
@@ -49,7 +49,7 @@ diff -ru a/src/base/ftoutln.c b/src/base/ftoutln.c
 +
 +    p = text;
 +
-+    for ( i = 0; i < 5; i++ )
++    for ( i = 0; i < 3; i++ )
 +    {
 +      while ( *p && ft_outline_gray_is_separator( *p ) )
 +        p++;
@@ -70,7 +70,7 @@ diff -ru a/src/base/ftoutln.c b/src/base/ftoutln.c
 +      p++;
 +
 +    /*
-+     * Reject trailing text or a sixth value.
++     * Reject trailing text or a fourth value.
 +     */
 +    return *p == '\0';
 +  }
@@ -80,13 +80,13 @@ diff -ru a/src/base/ftoutln.c b/src/base/ftoutln.c
 +  static void
 +  ft_outline_gray_get_config( FT_OutlineGrayFilterConfig*  config )
 +  {
-+    static const FT_Byte  weights_final_default[5] =
++    static const FT_Byte  weights_final_default[3] =
 +    {
-+      0x00, 0x1D, 0xC6, 0x1D, 0x00
++      0x1D, 0xC6, 0x1D
 +    };
 +
 +    const char*  value;
-+    FT_Byte      parsed[5];
++    FT_Byte      parsed[3];
 +
 +
 +    config->enabled = 1;
@@ -118,7 +118,7 @@ diff -ru a/src/base/ftoutln.c b/src/base/ftoutln.c
 +  }
 +
 +  /*
-+   * Apply the five-tap grayscale filter to a caller-owned bitmap
++   * Apply the three-tap grayscale filter to a caller-owned bitmap
 +   * without changing its dimensions, pitch, or buffer.
 +   *
 +   * Because FT_Outline_Get_Bitmap() cannot expand the target bitmap,
@@ -219,18 +219,18 @@ diff -ru a/src/base/ftoutln.c b/src/base/ftoutln.c
 +         *
 +         *   expanded[x] = sum( source[x - tap] * weights[tap] )
 +         *
-+         * and places the original bitmap at expanded offset +2.
++         * and places the original bitmap at expanded offset +1.
 +         *
 +         * Therefore, the equivalent same-coordinate in-place lookup is:
 +         *
-+         *   source[x + 2 - tap]
++         *   source[x + 1 - tap]
 +         */
-+        for ( tap = 0; tap < 5; tap++ )
++        for ( tap = 0; tap < 3; tap++ )
 +        {
 +          FT_Int  sx;
 +
 +
-+          sx = (FT_Int)x + 2 - (FT_Int)tap;
++          sx = (FT_Int)x + 1 - (FT_Int)tap;
 +
 +          if ( sx >= 0 && (FT_UInt)sx < width )
 +            sum += (FT_UInt)source[sx] * weights[tap];
@@ -305,8 +305,8 @@ diff -ru a/src/smooth/ftsmooth.c b/src/smooth/ftsmooth.c
 +    FT_Bool  gray_filter_enabled;
 +    FT_UInt  gray_filter_ppem;
 +
-+    FT_Byte  gray_weights[5];
-+    FT_Byte  gray_weights_final[5];
++    FT_Byte  gray_weights[3];
++    FT_Byte  gray_weights_final[3];
 +
 +  } FT_GrayRendererRec, *FT_GrayRenderer;
 +
@@ -322,17 +322,17 @@ diff -ru a/src/smooth/ftsmooth.c b/src/smooth/ftsmooth.c
 +
 +
 +  /*
-+   * Parse five hexadecimal byte values.
++   * Parse three hexadecimal byte values.
 +   *
 +   * Accepted examples:
 +   *
-+   *   00,15,D6,15,00
-+   *   0x00:0x15:0xD6:0x15:0x00
-+   *   00 15 D6 15 00
++   *   10,E0,10
++   *   0x10:0xE0:0x10
++   *   10 E0 10
 +   */
 +  static FT_Bool
 +  ft_smooth_gray_parse_weights( const char*  text,
-+                                FT_Byte       weights[5] )
++                                FT_Byte       weights[3] )
 +  {
 +    const char*  p;
 +    char*        end;
@@ -345,7 +345,7 @@ diff -ru a/src/smooth/ftsmooth.c b/src/smooth/ftsmooth.c
 +
 +    p = text;
 +
-+    for ( i = 0; i < 5; i++ )
++    for ( i = 0; i < 3; i++ )
 +    {
 +      while ( *p && ft_smooth_gray_is_separator( *p ) )
 +        p++;
@@ -369,7 +369,7 @@ diff -ru a/src/smooth/ftsmooth.c b/src/smooth/ftsmooth.c
 +    while ( *p && ft_smooth_gray_is_separator( *p ) )
 +      p++;
 +
-+    /* Reject trailing text or a sixth value. */
++    /* Reject trailing text or a fourth value. */
 +    return *p == '\0';
 +  }
 +
@@ -402,19 +402,19 @@ diff -ru a/src/smooth/ftsmooth.c b/src/smooth/ftsmooth.c
 +  static void
 +  ft_smooth_gray_filter_init( FT_Renderer  render )
 +  {
-+    static const FT_Byte  weights_default[5] =
++    static const FT_Byte  weights_default[3] =
 +    {
-+      0x00, 0x10, 0xE0, 0x10, 0x00
++      0x10, 0xE0, 0x10
 +    };
 +
-+    static const FT_Byte  weights_final_default[5] =
++    static const FT_Byte  weights_final_default[3] =
 +    {
-+      0x00, 0x1D, 0xC6, 0x1D, 0x00
++      0x1D, 0xC6, 0x1D
 +    };
 +
 +    FT_GrayRenderer  gray = (FT_GrayRenderer)render;
 +    const char*      value;
-+    FT_Byte          parsed[5];
++    FT_Byte          parsed[3];
 +
 +
 +    gray->gray_filter_enabled = 1;
@@ -513,10 +513,10 @@ diff -ru a/src/smooth/ftsmooth.c b/src/smooth/ftsmooth.c
 +    src_width = bitmap->width;
 +    src_pitch = bitmap->pitch;
 +
-+    if ( src_width > (FT_UInt)FT_INT_MAX - 4U )
++    if ( src_width > (FT_UInt)FT_INT_MAX - 2U )
 +      return FT_THROW( Raster_Overflow );
 +
-+    dst_width = src_width + 4U;
++    dst_width = src_width + 2U;
 +    dst_pitch = (FT_Int)dst_width;
 +
 +    if ( FT_ALLOC_MULT( filtered, bitmap->rows, dst_pitch ) )
@@ -546,7 +546,7 @@ diff -ru a/src/smooth/ftsmooth.c b/src/smooth/ftsmooth.c
 +
 +        sum = 0;
 +
-+        for ( tap = 0; tap < 5; tap++ )
++        for ( tap = 0; tap < 3; tap++ )
 +        {
 +          FT_Int  sx;
 +
@@ -577,9 +577,9 @@ diff -ru a/src/smooth/ftsmooth.c b/src/smooth/ftsmooth.c
 +    bitmap->pitch  = dst_pitch;
 +
 +    /*
-+     * The original center tap is at destination offset +2.
++     * The original center tap is at destination offset +1.
 +     */
-+    slot->bitmap_left -= 2;
++    slot->bitmap_left -= 1;
 +
 +    return FT_Err_Ok;
 +  }
