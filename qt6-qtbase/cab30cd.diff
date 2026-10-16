@@ -1,0 +1,307 @@
+From cab30cd3dba7d3ea60e3c440b672672ed820ef63 Mon Sep 17 00:00:00 2001
+From: Ilya Fedin <fedin-ilja2010@ya.ru>
+Date: Sat, 10 Oct 2026 07:42:24 +0400
+Subject: [PATCH] freetype: Hint scaled glyphs at the size they have on the device
+
+When the device pixel ratio is not 1, the fontconfig database forces
+HintNone on every font engine with the default hinting preference, so
+text gets no hinting at all exactly where it matters the most: in
+windows with a fractional scale factor on a low-density screen.
+
+There are two reasons for hinting to be off there. The layout is done
+in logical coordinates and gets scaled afterwards, so it can't depend
+on metrics fitted to the pixel grid. And glyphs drawn with a scaling
+transformation are loaded unhinted since
+6da6845f078e419ccb555fe1dd152e0ba82a7e88, as otherwise they would be
+hinted at the logical size and stretched after that.
+
+Neither applies when glyphs are hinted only vertically, and at the size
+they have on the device.
+
+For the size, when the transformation is a scale, QFontEngineFT now
+sets the scaled size on the face instead of transforming the outline,
+and keeps the hinting on. The device pixel ratio reaches the engine as
+such a scale, but so does any other one, so text scaled by the painter
+gets hinted at the size it is drawn at as well, the way its engine
+hints without a scale. A synthesized slant is applied to the outline
+at its new size, so under a scale that is not uniform the difference
+is left to the matrix. So is the sign of a scale, as a size can't
+mirror a glyph. FreeType doesn't take a size below a pixel, so a scale
+that makes a glyph smaller than that still transforms the outline.
+
+For the direction, with the device pixel ratio in effect the engine is
+made to hint vertically only instead of getting HintNone. HintLight is
+like that already. For HintMedium and HintFull, that takes version 40
+of the TrueType interpreter, which doesn't move points horizontally,
+and glyphs are loaded with FT_LOAD_TARGET_LCD, which makes the
+auto-hinter do the same for fonts without instructions. Such an engine
+uses design metrics and subpixel positions the way an unhinted one
+does, so the layout doesn't change.
+
+Version 40 is the default. Version 35 can still be chosen through
+FREETYPE_PROPERTIES, but the version is a property of the whole
+FreeType library, so it isn't overridden: such engines keep HintNone,
+like monochrome text and FreeType without version 40, as glyphs would
+be fitted horizontally there.
+
+Without the device pixel ratio, or with an explicit hinting preference,
+an engine with HintMedium or HintFull is left as it is. Under a scale
+of the painter its glyphs may then get fitted horizontally at a size
+their advances weren't computed for. Such text is not laid out
+precisely under a scale in any case, as its advances are fitted to the
+unscaled size and its positions get rounded to whole pixels.
+
+[ChangeLog][QtGui][Text] With FreeType and fontconfig, text is now
+hinted vertically when a device pixel ratio is in effect, instead of
+not being hinted at all. Setting QT_DISABLE_DPR_FONT_HINTING=1 in the
+environment restores the previous behavior.
+
+[ChangeLog][QtGui][Text] With FreeType, text drawn with a scaling
+transformation is now hinted at the size it has on the device, instead
+of not being hinted at all.
+
+Fixes: QTBUG-128874
+Change-Id: If249db3456766004dff2e93cc15df000c270ba3c
+Reviewed-by: Eskil Abrahamsen Blomfeldt <eskil.abrahamsen-blomfeldt@qt.io>
+---
+
+diff --git a/src/gui/text/freetype/qfontengine_ft.cpp b/src/gui/text/freetype/qfontengine_ft.cpp
+index cd37c64..1581961 100644
+--- a/src/gui/text/freetype/qfontengine_ft.cpp
++++ b/src/gui/text/freetype/qfontengine_ft.cpp
+@@ -943,6 +943,7 @@
+     m_subPixelPositionCount = 4;
+     forceAutoHint = false;
+     stemDarkeningDriver = false;
++    verticalHintingOnly = false;
+ }
+ 
+ QFontEngineFT::~QFontEngineFT()
+@@ -1130,6 +1131,34 @@
+     default_hint_style = style;
+ }
+ 
++// Since version 40 the TrueType interpreter moves points horizontally only for monochrome glyphs.
++static bool hasTrueTypeInterpreterV40(FT_Library library)
++{
++#if defined(FT_FONT_FORMATS_H)
++    FT_UInt version = 0;
++    if (FT_Property_Get(library, "truetype", "interpreter-version", &version) != FT_Err_Ok)
++        return true; // No TrueType driver, so no interpreter either
++    return version == 40;
++#else
++    Q_UNUSED(library);
++    return false;
++#endif
++}
++
++// Returns false if the hinting may still fit glyphs to the pixel grid horizontally.
++bool QFontEngineFT::setVerticalHintingOnly()
++{
++    // Monochrome glyphs get fitted both ways by any hinter
++    if (!antialias)
++        return false;
++    if ((default_hint_style == HintMedium || default_hint_style == HintFull)
++        && !hasTrueTypeInterpreterV40(qt_getFreetype())) {
++        return false;
++    }
++    verticalHintingOnly = true;
++    return true;
++}
++
+ bool QFontEngineFT::expectsGammaCorrectedBlending(QFontEngine::GlyphFormat format) const
+ {
+     Q_UNUSED(format);
+@@ -1142,7 +1171,9 @@
+     int load_flags = FT_LOAD_DEFAULT | default_load_flags;
+     int load_target = default_hint_style == HintLight
+                       ? FT_LOAD_TARGET_LIGHT
+-                      : FT_LOAD_TARGET_NORMAL;
++                      : verticalHintingOnly
++                        ? FT_LOAD_TARGET_LCD // Makes the auto-hinter work vertically only
++                        : FT_LOAD_TARGET_NORMAL;
+ 
+     if (format == Format_Mono) {
+         load_target = FT_LOAD_TARGET_MONO;
+@@ -1780,6 +1811,9 @@
+ }
+ #endif // QFONTENGINE_FT_SUPPORT_COLRV1
+ 
++// The slant of FT_GlyphSlot_Oblique(), this has to be kept in sync with FreeType
++static const FT_Fixed obliqueSlant = 0x0366A;
++
+ QFontEngineFT::Glyph *QFontEngineFT::loadGlyph(QGlyphSet *set, uint glyph,
+                                                const QFixedPoint &subPixelPosition,
+                                                QColor color,
+@@ -1815,7 +1849,7 @@
+         FT_Matrix slant;
+         slant.xx = 0x10000L;
+         slant.yx = 0;
+-        slant.xy = 0x0366A;
++        slant.xy = obliqueSlant;
+         slant.yy = 0x10000L;
+ 
+         FT_Matrix_Multiply(&matrix, &slant);
+@@ -2529,7 +2563,7 @@
+     if (!FT_IS_SCALABLE(freetype->face))
+         return false;
+ 
+-    return default_hint_style == HintNone || default_hint_style == HintLight || (flags & DesignMetrics);
++    return supportsHorizontalSubPixelPositions() || (flags & DesignMetrics);
+ }
+ 
+ QFixed QFontEngineFT::scaledBitmapMetrics(QFixed m) const
+@@ -2826,13 +2860,44 @@
+     Glyph *glyph = glyphSet != nullptr ? glyphSet->getGlyph(g, subPixelPosition) : nullptr;
+     if (!glyph || glyph->format != format || (!fetchBoundingBox && !glyph->data)) {
+         QScopedValueRollback<HintStyle> saved_default_hint_style(default_hint_style);
+-        if (t.type() >= QTransform::TxScale && !is2dRotation(t))
+-            default_hint_style = HintNone; // disable hinting if the glyphs are transformed
+ 
+-        lockFace();
++        // A scaled glyph can be hinted at the size it has on the device, if it's a pixel at least
++        const qreal scaleX = qAbs(t.m11());
++        const qreal scaleY = qAbs(t.m22());
++        const bool hintAtDeviceSize = default_hint_style != HintNone
++                && format != Format_ARGB // COLRv1 is drawn at the size of the engine
++                && FT_IS_SCALABLE(freetype->face)
++                && t.type() <= QTransform::TxScale
++                && xsize * scaleX >= 64 && ysize * scaleY >= 64;
++
+         FT_Matrix m = this->matrix;
+-        FT_Matrix ftMatrix = glyphSet != nullptr ? glyphSet->transformationMatrix : QTransformToFTMatrix(t);
+-        FT_Matrix_Multiply(&ftMatrix, &m);
++        if (hintAtDeviceSize) {
++            // The size is scaled instead of the outline, lockFace() sets it back when needed
++            freetype->lock();
++            setFaceSize(qRound(xsize * scaleX), qRound(ysize * scaleY));
++
++            // The synthesized slant is applied to the outline at its new size, so the matrix
++            // has to make up for a scale that is not uniform
++            if (obliquen)
++                m.xy = qRound(obliqueSlant * (scaleX / scaleY - 1));
++
++            // A size can't mirror the outline, that is left to the matrix too
++            if (t.m11() < 0) {
++                m.xx = -m.xx;
++                m.xy = -m.xy;
++            }
++            if (t.m22() < 0) {
++                m.yx = -m.yx;
++                m.yy = -m.yy;
++            }
++        } else {
++            if (t.type() >= QTransform::TxScale && !is2dRotation(t))
++                default_hint_style = HintNone; // disable hinting if the glyphs are transformed
++
++            lockFace();
++            FT_Matrix ftMatrix = glyphSet != nullptr ? glyphSet->transformationMatrix : QTransformToFTMatrix(t);
++            FT_Matrix_Multiply(&ftMatrix, &m);
++        }
+         freetype->matrix = m;
+         glyph = loadGlyph(glyphSet, g, subPixelPosition, color, format, false, disableOutlineDrawing);
+         unlockFace();
+@@ -2951,10 +3016,8 @@
+             freetype->xsize = face->units_per_EM << 6;
+             freetype->ysize = face->units_per_EM << 6;
+         }
+-    } else if (freetype->xsize != xsize || freetype->ysize != ysize) {
+-        FT_Set_Char_Size(face, xsize, ysize, 0, 0);
+-        freetype->xsize = xsize;
+-        freetype->ysize = ysize;
++    } else {
++        setFaceSize(xsize, ysize);
+     }
+     if (freetype->matrix.xx != matrix.xx ||
+         freetype->matrix.yy != matrix.yy ||
+@@ -2967,6 +3030,15 @@
+     return face;
+ }
+ 
++void QFontEngineFT::setFaceSize(int xsize, int ysize) const
++{
++    if (freetype->xsize != xsize || freetype->ysize != ysize) {
++        FT_Set_Char_Size(freetype->face, xsize, ysize, 0, 0);
++        freetype->xsize = xsize;
++        freetype->ysize = ysize;
++    }
++}
++
+ void QFontEngineFT::unlockFace() const
+ {
+     freetype->unlock();
+@@ -3066,6 +3138,7 @@
+     subpixelType = fe->subpixelType;
+     lcdFilterType = fe->lcdFilterType;
+     embeddedbitmap = fe->embeddedbitmap;
++    verticalHintingOnly = fe->verticalHintingOnly;
+ 
+     return true;
+ }
+diff --git a/src/gui/text/freetype/qfontengine_ft_p.h b/src/gui/text/freetype/qfontengine_ft_p.h
+index 2faf8e6..80d45b8 100644
+--- a/src/gui/text/freetype/qfontengine_ft_p.h
++++ b/src/gui/text/freetype/qfontengine_ft_p.h
+@@ -170,7 +170,8 @@
+     bool supportsHorizontalSubPixelPositions() const override
+     {
+         return default_hint_style == HintLight ||
+-               default_hint_style == HintNone;
++               default_hint_style == HintNone ||
++               verticalHintingOnly;
+     }
+ 
+     bool supportsVerticalSubPixelPositions() const override
+@@ -290,6 +291,7 @@
+ 
+     void setQtDefaultHintStyle(QFont::HintingPreference hintingPreference);
+     void setDefaultHintStyle(HintStyle style) override;
++    bool setVerticalHintingOnly();
+ 
+     QFontEngine *cloneWithSize(qreal pixelSize) const override;
+     Qt::HANDLE handle() const override;
+@@ -315,6 +317,7 @@
+     bool cacheEnabled;
+     bool forceAutoHint;
+     bool stemDarkeningDriver;
++    bool verticalHintingOnly;
+ 
+ private:
+     friend class QFontEngineFTRawFont;
+@@ -323,6 +326,7 @@
+     friend class QFontEngineMultiFontConfig;
+ 
+     int loadFlags(QGlyphSet *set, GlyphFormat format, int flags, bool &hsubpixel, int &vfactor) const;
++    void setFaceSize(int xsize, int ysize) const;
+     bool shouldUseDesignMetrics(ShaperFlags flags) const;
+     QFixed scaledBitmapMetrics(QFixed m) const;
+     glyph_metrics_t scaledBitmapMetrics(const glyph_metrics_t &m, const QTransform &matrix) const;
+diff --git a/src/gui/text/unix/qfontconfigdatabase.cpp b/src/gui/text/unix/qfontconfigdatabase.cpp
+index fe86a53..d2664c7 100644
+--- a/src/gui/text/unix/qfontconfigdatabase.cpp
++++ b/src/gui/text/unix/qfontconfigdatabase.cpp
+@@ -715,9 +715,6 @@
+         break;
+     }
+ 
+-    if (isDprScaling())
+-        return QFontEngine::HintNone;
+-
+     void *hintStyleResource =
+             QGuiApplication::platformNativeInterface()->nativeResourceForScreen("hintstyle",
+                                                                                 QGuiApplication::primaryScreen());
+@@ -1193,6 +1190,14 @@
+     engine->antialias = antialias;
+     engine->defaultFormat = format;
+     engine->glyphFormat = format;
++
++    // The device pixel ratio scales glyphs after the layout, so they can't be fitted horizontally
++    if (isDprScaling() && fontDef.hintingPreference == QFont::PreferDefaultHinting) {
++        static const bool disabled =
++                qEnvironmentVariableIntValue("QT_DISABLE_DPR_FONT_HINTING") > 0;
++        if (disabled || !engine->setVerticalHintingOnly())
++            engine->setDefaultHintStyle(QFontEngine::HintNone);
++    }
+ }
+ 
+ bool QFontconfigDatabase::supportsVariableApplicationFonts() const
