@@ -56,6 +56,7 @@ This is a build of Fontforge that has Truetype debugging enabled, but is otherwi
 https://copr.fedorainfracloud.org/coprs/infinality/qt6-qtbase/
 
 MERGED in Qt 6.13.0:  https://codereview.qt-project.org/c/qt%2Fqtbase/+/779906
+
 Original bug report:  https://qt-project.atlassian.net/browse/QTBUG-128874
 
 This is a custom build of qt6-qtbase that applies a patch to fix the unhinted text (ignoring fontconfig rules) on DPR/desktop scales on non-integer scales (125%, 150%, 175%, 225%, etc.) that has been present for years, noticeable on KDE Plasma applications that use Qt (e.g. kwrite, konsole, kate, etc.).  Functionally, it makes Qt applications respect the fontconfig hinting settings again instead of forcing everything to become unhinted, which is blurry at smaller point sizes and inconsistent with other applications.  It is otherwise identical to the stock fedora package.  The patch was developed with LLM and other developers' assistance and is available in the qt6-qtbase directory.  There are two versions:
